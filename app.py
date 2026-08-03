@@ -1,12 +1,30 @@
-import base64
+﻿import base64
 import html
-from datetime import date
+from datetime import date, datetime, time, timedelta
 
 import pandas as pd
 import streamlit as st
 
 import db
 import sync
+
+try:
+    from pandas.io.formats.style import Styler
+except Exception:  # pragma: no cover
+    Styler = None
+
+
+def _norm_jam(s):
+    """Terima '10:10', '10.10', atau '1010' -> '10:10'; None kalau tidak valid."""
+    import re
+
+    m = re.fullmatch(r"(\d{1,2})[:.](\d{2})", str(s).strip())
+    if not m:
+        return None
+    j, mnt = int(m.group(1)), int(m.group(2))
+    if j > 23 or mnt > 59:
+        return None
+    return f"{j:02d}:{mnt:02d}"
 
 st.set_page_config(page_title="Catatan Semester 5", layout="wide", initial_sidebar_state="expanded")
 
@@ -16,78 +34,261 @@ CSS = """
 
 html, body, [class*="css"], [data-testid="stAppViewContainer"] {
     font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+    color: #e2e8f0;
 }
 
 #MainMenu, footer, [data-testid="stMainMenu"], [data-testid="stToolbarActionButton"] { visibility: hidden; }
+[data-testid="stExpandSidebarButton"] {
+    visibility: visible !important;
+    color: #ffffff !important;
+    background: rgba(255,255,255,.14);
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 10px;
+    backdrop-filter: blur(12px);
+}
 [data-testid="stHeader"] { background: transparent; }
 
-.stApp { background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%); }
+.stApp {
+    background:
+        radial-gradient(1000px 520px at 8% -12%, rgba(59,130,246,.55), transparent 62%),
+        radial-gradient(900px 480px at 108% 4%, rgba(168,85,247,.5), transparent 58%),
+        radial-gradient(820px 560px at 50% 118%, rgba(6,182,212,.4), transparent 60%),
+        linear-gradient(160deg, #0b1120 0%, #101b3c 42%, #1e1b4b 100%);
+    background-attachment: fixed;
+}
 
 [data-testid="stSidebar"] {
-    background: #ffffff;
-    border-right: 1px solid #e2e8f0;
+    background: rgba(15, 23, 42, .55);
+    backdrop-filter: blur(28px) saturate(150%);
+    -webkit-backdrop-filter: blur(28px) saturate(150%);
+    border-right: 1px solid rgba(255,255,255,.10);
 }
 [data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
 [data-testid="stSidebar"] [role="radiogroup"] label {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 10px 14px;
-    margin-bottom: 6px;
-    transition: all .15s ease;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 14px;
+    padding: 11px 14px;
+    margin-bottom: 8px;
+    transition: all .18s ease;
+    backdrop-filter: blur(10px);
+}
+[data-testid="stSidebar"] [role="radiogroup"] label p {
+    color: #e2e8f0 !important;
+    font-weight: 600;
 }
 [data-testid="stSidebar"] [role="radiogroup"] label:hover {
-    background: #eef2ff;
-    border-color: #c7d2fe;
+    background: rgba(255,255,255,.13);
+    border-color: rgba(255,255,255,.28);
+    transform: translateX(3px);
 }
 [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
-    background: linear-gradient(120deg, #2563eb, #0ea5e9);
-    border-color: transparent;
-    box-shadow: 0 6px 16px rgba(37, 99, 235, .28);
+    background: linear-gradient(120deg, rgba(59,130,246,.85), rgba(14,165,233,.75));
+    border: 1px solid rgba(255,255,255,.25);
+    box-shadow: 0 8px 22px rgba(37, 99, 235, .45), inset 0 1px 0 rgba(255,255,255,.25);
 }
 [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {
-    color: #ffffff;
+    color: #ffffff !important;
     font-weight: 700;
 }
 
 .sidebar-brand {
-    color: #1e3a8a;
-    font-size: 1.2rem;
+    color: #f8fafc;
+    font-size: 1.25rem;
     font-weight: 800;
     letter-spacing: .5px;
     padding: 4px 6px 2px 6px;
+    text-shadow: 0 2px 12px rgba(59,130,246,.5);
 }
-.sidebar-sub { color: #64748b; font-size: .8rem; padding: 0 6px 10px 6px; }
+.sidebar-sub { color: rgba(226,232,240,.65); font-size: .8rem; padding: 0 6px 10px 6px; }
+
+.user-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 16px;
+    padding: 12px 14px;
+    margin: 12px 0 8px 0;
+    backdrop-filter: blur(10px);
+}
+.user-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6, #06b6d4);
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 16px rgba(59,130,246,.5);
+    flex-shrink: 0;
+}
+.user-name { color: #f1f5f9; font-weight: 700; font-size: .92rem; }
+.user-role { color: rgba(226,232,240,.6); font-size: .75rem; }
+
+.login-card { text-align: center; padding: 48px 0 24px 0; max-width: 340px; margin: 0 auto; }
+.welcome-card {
+    background: linear-gradient(135deg, rgba(59,130,246,.25), rgba(6,182,212,.25));
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 18px;
+    padding: 18px 22px;
+    margin-bottom: 18px;
+    backdrop-filter: blur(10px);
+}
+.welcome-title { color: #f1f5f9; font-weight: 800; font-size: 1.15rem; }
+.welcome-sub { color: rgba(226,232,240,.6); font-size: .8rem; margin-top: 2px; }
+
+.tbl-wrap {
+    overflow: auto;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 14px;
+    background: rgba(255,255,255,.04);
+}
+.tbl-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+.tbl-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 8px; }
+.tbl-custom {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .85rem;
+    white-space: nowrap;
+}
+.tbl-custom th {
+    position: sticky;
+    top: 0;
+    background: #1e293b;
+    color: #93c5fd;
+    text-align: left;
+    padding: 9px 12px;
+    font-weight: 700;
+    z-index: 1;
+}
+.tbl-custom td {
+    padding: 8px 12px;
+    color: #e2e8f0;
+    border-top: 1px solid rgba(255,255,255,.06);
+}
+.tbl-custom tbody tr:hover { background: rgba(59,130,246,.12); }
+.tbl-badge { font-weight: 700; }
+
+[data-testid="stTextInputRootElement"],
+[data-testid="stTextAreaRootElement"],
+[data-testid="stNumberInput"] [data-baseweb="input"],
+[data-testid="stDateInput"] [data-baseweb="input"],
+[data-testid="stTimeInput"] [data-baseweb="select"],
+[data-testid="stSelectbox"] [data-baseweb="select"] {
+    background: linear-gradient(180deg, rgba(148,184,255,.16), rgba(59,130,246,.09)) !important;
+    border: 1px solid rgba(165,200,255,.22) !important;
+    border-radius: 14px !important;
+    color: #e2e8f0 !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.09) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    outline: none !important;
+    transition: background .15s ease, box-shadow .15s ease;
+}
+[data-testid="stTextInputRootElement"]:hover,
+[data-testid="stTextAreaRootElement"]:hover,
+[data-testid="stNumberInput"] [data-baseweb="input"]:hover,
+[data-testid="stDateInput"] [data-baseweb="input"]:hover,
+[data-testid="stTimeInput"] [data-baseweb="select"]:hover,
+[data-testid="stSelectbox"] [data-baseweb="select"]:hover {
+    background: linear-gradient(180deg, rgba(148,184,255,.24), rgba(59,130,246,.15)) !important;
+}
+[data-testid="stTextInputRootElement"]:focus-within,
+[data-testid="stTextAreaRootElement"]:focus-within,
+[data-testid="stNumberInput"] [data-baseweb="input"]:focus-within,
+[data-testid="stDateInput"] [data-baseweb="input"]:focus-within,
+[data-testid="stTimeInput"] [data-baseweb="select"]:focus-within,
+[data-testid="stSelectbox"] [data-baseweb="select"]:focus-within {
+    background: linear-gradient(180deg, rgba(148,184,255,.2), rgba(59,130,246,.12)) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 0 0 2px rgba(96,165,250,.35) !important;
+}
+[data-testid="stNumberInput"] [data-baseweb="base-input"],
+[data-testid="stTextInput"] [data-baseweb="base-input"],
+[data-testid="stTextArea"] [data-baseweb="base-input"],
+[data-testid="stDateInput"] [data-baseweb="base-input"],
+[data-testid="stTimeInput"] [data-baseweb="select"] > div,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+[data-testid="stDateInputField"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #e2e8f0 !important;
+}
+[data-testid="stSelectbox"] [data-baseweb="select"] [role="button"],
+[data-testid="stDateInput"] [data-baseweb="input"] [role="button"],
+[data-testid="stTimeInput"] [data-baseweb="select"] [role="button"],
+[data-testid="stNumberInputStepUp"],
+[data-testid="stNumberInputStepDown"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+[data-testid="stSelectbox"] [data-baseweb="popover"] [data-baseweb="menu"] {
+    background: rgba(22,35,60,.85) !important;
+    border: 1px solid rgba(165,200,255,.18) !important;
+    border-radius: 14px !important;
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
+    overflow: hidden;
+}
+[data-testid="stSelectbox"] [data-baseweb="popover"] [data-baseweb="menu"] [role="option"]:hover {
+    background-color: rgba(59,130,246,.25) !important;
+}
+
+.login-avatar { width: 72px; height: 72px; font-size: 1.7rem; margin: 0 auto 16px auto; }
+
+.login-avatar { width: 72px; height: 72px; font-size: 1.7rem; margin: 0 auto 16px auto; }
+.login-title { color: #f1f5f9; font-weight: 800; font-size: 1.35rem; }
+.login-sub { color: rgba(226,232,240,.55); font-size: .85rem; margin-top: 4px; }
 
 .sync-box {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 14px;
     padding: 10px 12px;
-    color: #334155;
+    color: #e2e8f0;
     font-size: .78rem;
     margin: 10px 0;
+    backdrop-filter: blur(10px);
 }
 
 .siakad-banner {
     position: relative;
     overflow: hidden;
-    background: linear-gradient(120deg, #1e3a8a 0%, #2563eb 55%, #0ea5e9 100%);
-    border-radius: 14px;
-    padding: 18px 24px;
-    margin-bottom: 18px;
-    box-shadow: 0 8px 24px rgba(37,99,235,.20);
+    background: linear-gradient(120deg, rgba(37,99,235,.55), rgba(14,165,233,.35), rgba(168,85,247,.45));
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 22px;
+    padding: 20px 26px;
+    margin-bottom: 20px;
+    box-shadow: 0 12px 36px rgba(2, 6, 23, .45), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.siakad-banner::before {
+    content: "";
+    position: absolute;
+    top: -70px; left: 8%;
+    width: 260px; height: 260px;
+    background: radial-gradient(circle, rgba(255,255,255,.28), transparent 70%);
+    border-radius: 50%;
+    filter: blur(4px);
 }
 .siakad-banner::after {
     content: "";
     position: absolute;
-    top: -60px; right: -40px;
-    width: 230px; height: 230px;
-    background: radial-gradient(circle, rgba(255,255,255,.20), transparent 70%);
+    bottom: -80px; right: -30px;
+    width: 240px; height: 240px;
+    background: radial-gradient(circle, rgba(165, 243, 252, .3), transparent 70%);
     border-radius: 50%;
+    filter: blur(6px);
 }
-.banner-title { color: #ffffff; font-size: 1.35rem; font-weight: 800; }
-.banner-sub { color: rgba(255,255,255,.85); font-size: .9rem; margin-top: 4px; }
+.banner-title { color: #ffffff; font-size: 1.4rem; font-weight: 800; text-shadow: 0 2px 14px rgba(2,6,23,.35); }
+.banner-sub { color: rgba(255,255,255,.88); font-size: .9rem; margin-top: 4px; }
 
 .stat-grid {
     display: grid;
@@ -98,26 +299,29 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
 .stat-card {
     position: relative;
     overflow: hidden;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    padding: 16px 18px;
-    box-shadow: 0 2px 10px rgba(15,23,42,.05);
-    transition: transform .15s ease, box-shadow .15s ease;
+    background: rgba(255,255,255,.08);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 20px;
+    padding: 18px 20px;
+    box-shadow: 0 10px 30px rgba(2, 6, 23, .35), inset 0 1px 0 rgba(255,255,255,.18);
+    transition: transform .18s ease, box-shadow .18s ease;
 }
 .stat-card::before {
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, var(--accent, #2563eb), transparent 85%);
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent, #3b82f6), transparent 85%);
+    box-shadow: 0 0 14px var(--accent, #3b82f6);
 }
 .stat-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 24px rgba(15,23,42,.10);
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: 0 16px 40px rgba(2, 6, 23, .5), inset 0 1px 0 rgba(255,255,255,.22);
 }
 .stat-label {
-    color: #64748b;
+    color: rgba(226,232,240,.75);
     font-size: .74rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -130,86 +334,128 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
     height: 8px;
     border-radius: 50%;
     margin-right: 6px;
-    background: var(--accent, #2563eb);
+    background: var(--accent, #3b82f6);
+    box-shadow: 0 0 8px var(--accent, #3b82f6);
     vertical-align: 0;
 }
-.stat-value { font-size: 2rem; font-weight: 800; margin-top: 4px; }
+.stat-value { font-size: 2.1rem; font-weight: 800; margin-top: 4px; text-shadow: 0 2px 12px rgba(2,6,23,.4); }
 
 .panel {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    padding: 16px 18px;
-    box-shadow: 0 2px 10px rgba(15, 23, 42, .05);
-    margin-bottom: 16px;
+    background: rgba(255,255,255,.07);
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    border: 1px solid rgba(255,255,255,.13);
+    border-radius: 20px;
+    padding: 18px 20px;
+    box-shadow: 0 10px 32px rgba(2, 6, 23, .35), inset 0 1px 0 rgba(255,255,255,.15);
+    margin-bottom: 18px;
 }
 .panel-title {
-    font-size: 1.02rem;
+    font-size: 1.05rem;
     font-weight: 800;
-    color: #0f172a;
-    margin: 8px 0 10px 0;
+    color: #f1f5f9;
+    margin: 8px 0 12px 0;
 }
 .panel-title::before {
     content: "";
     display: inline-block;
-    width: 4px;
-    height: 15px;
-    border-radius: 2px;
-    margin-right: 8px;
-    background: linear-gradient(180deg, #2563eb, #0ea5e9);
+    width: 5px;
+    height: 16px;
+    border-radius: 3px;
+    margin-right: 9px;
+    background: linear-gradient(180deg, #60a5fa, #22d3ee);
+    box-shadow: 0 0 10px rgba(56,189,248,.6);
     vertical-align: -2px;
 }
 
 [data-testid="stButton"] button[kind="primary"], [data-testid="stFormSubmitButton"] button[kind="primary"] {
-    background: linear-gradient(120deg, #2563eb, #0ea5e9);
+    background: linear-gradient(120deg, #3b82f6, #06b6d4);
     border: none;
-    box-shadow: 0 8px 20px rgba(37, 99, 235, .35);
+    box-shadow: 0 10px 26px rgba(59, 130, 246, .5), inset 0 1px 0 rgba(255,255,255,.3);
     transition: transform .15s ease, box-shadow .15s ease;
 }
 [data-testid="stButton"] button[kind="primary"]:hover, [data-testid="stFormSubmitButton"] button[kind="primary"]:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 28px rgba(37, 99, 235, .45);
+    box-shadow: 0 14px 32px rgba(59, 130, 246, .6), inset 0 1px 0 rgba(255,255,255,.3);
 }
 
-[data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
-[data-testid="stTimeInput"] input, [data-testid="stTextArea"] textarea {
-    border-radius: 10px !important;
-    border-color: #cbd5e1 !important;
-}
-[data-testid="stSelectbox"] div[data-baseweb="select"] > div { border-radius: 10px !important; }
-[data-testid="stTextInput"] input:focus, [data-testid="stNumberInput"] input:focus,
-[data-testid="stTimeInput"] input:focus, [data-testid="stTextArea"] textarea:focus,
-[data-testid="stDateInput"] input:focus {
-    border-color: #2563eb !important;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, .15) !important;
-}
-[data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within {
-    border-color: #2563eb !important;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, .15) !important;
-}
 [data-testid="stButton"] button, [data-testid="stFormSubmitButton"] button {
-    border-radius: 10px !important;
+    border-radius: 12px !important;
     font-weight: 700 !important;
 }
-[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background: rgba(239,68,68,.15) !important;
+    border: 1px solid rgba(239,68,68,.45) !important;
+    color: #fca5a5 !important;
+    box-shadow: none !important;
+    backdrop-filter: blur(8px);
+}
+[data-testid="stSidebar"] button[kind="secondary"]:hover {
+    background: rgba(239,68,68,.28) !important;
+    border-color: rgba(239,68,68,.7) !important;
+    color: #fecaca !important;
+}
+
+[data-testid="stDataFrame"] {
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,.12);
+    --st-default-background-color: rgba(255,255,255,.04);
+    --st-header-background-color: rgba(255,255,255,.10);
+    --st-header-text-color: #f8fafc;
+    --st-default-text-color: #e2e8f0;
+    --st-row-selection-background-color: rgba(59,130,246,.35);
+    --st-grid-border-color: rgba(255,255,255,.08);
+}
 [data-testid="stDataFrame"] [role="columnheader"] {
-    background: #f1f5f9;
-    color: #0f172a;
+    background: rgba(255,255,255,.09);
+    color: #f8fafc;
     font-weight: 700;
 }
+
 [data-testid="stExpander"] details {
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    background: #ffffff;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 16px;
+    background: rgba(255,255,255,.05);
+    backdrop-filter: blur(16px);
 }
-[data-testid="stExpander"] summary { font-weight: 700; color: #0f172a; }
+[data-testid="stExpander"] summary { font-weight: 700; color: #f1f5f9; }
+[data-testid="stExpander"] summary p { color: #f1f5f9; }
+
+[data-testid="stDialog"] {
+    background: rgba(15, 23, 42, .92);
+    backdrop-filter: blur(30px) saturate(150%);
+    -webkit-backdrop-filter: blur(30px) saturate(150%);
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 22px;
+}
+
+[data-testid="stAlert"] {
+    border-radius: 14px !important;
+    border: 1px solid rgba(255,255,255,.14) !important;
+    backdrop-filter: blur(12px);
+}
+[data-testid="stAlert"] p { color: #f1f5f9 !important; }
+
+[data-testid="stSegmentedControl"] button {
+    border-radius: 12px !important;
+    color: #e2e8f0 !important;
+}
+[data-testid="stSegmentedControl"] button[aria-checked="true"] {
+    background: linear-gradient(120deg, #3b82f6, #06b6d4) !important;
+    color: #ffffff !important;
+}
+
+[data-testid="stWidgetLabel"], [data-testid="stMarkdownContainer"] p { color: #e2e8f0; }
+
 .sidebar-foot {
-    color: #94a3b8;
+    color: rgba(148,163,184,.7);
     font-size: .72rem;
     text-align: center;
     margin-top: 14px;
     padding-top: 10px;
-    border-top: 1px solid #e2e8f0;
+    border-top: 1px solid rgba(255,255,255,.10);
 }
 </style>
 """
@@ -217,7 +463,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
 st.markdown(CSS, unsafe_allow_html=True)
 
 PAGE_TITLES = {
-    "Dashboard": ("Dashboard", "Rekap kehadiran dan tugas semester 5."),
+    "Dashboard": ("Dashboard", "Rekap kehadiran dan tugas — Muhammad Nabiel Fahrendi."),
     "Jadwal Kuliah": ("Jadwal Kuliah", "Matakuliah dan jadwal semester 5."),
     "Absen": ("Absen", "Catat kehadiranmu setiap masuk kelas."),
     "Tugas Harian": ("Tugas Harian", "Tugas harian yang kamu buat."),
@@ -249,20 +495,45 @@ def flash():
         st.success(msg)
 
 
-def select_table(df, key, height=380):
-    event = st.dataframe(
-        df,
-        key=key,
-        hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row",
-        height=height,
-        width="stretch",
+_WARNA_STATUS = {
+    "Terlambat": "#f87171", "Belum": "#fbbf24", "Diserahkan": "#34d399",
+    "Hadir": "#34d399", "Alpa": "#f87171", "Izin": "#fbbf24", "Sakit": "#fbbf24",
+}
+
+
+def tabel_html(df, height=300):
+    """Tabel HTML statis - tidak bisa di-resize, tampilan kaca."""
+    cols = list(df.columns)
+    thead = "".join(f"<th>{html.escape(str(c))}</th>" for c in cols)
+    trs = []
+    for _, r in df.iterrows():
+        tds = []
+        for c in cols:
+            v = r[c]
+            txt = "-" if v is None or (isinstance(v, float) and pd.isna(v)) else str(v)
+            if c == "Status" and txt in _WARNA_STATUS:
+                tds.append(
+                    f'<td><span class="tbl-badge" style="color:{_WARNA_STATUS[txt]}">{html.escape(txt)}</span></td>'
+                )
+            else:
+                tds.append(f"<td>{html.escape(txt)}</td>")
+        trs.append("<tr>" + "".join(tds) + "</tr>")
+    st.markdown(
+        f'<div class="tbl-wrap" style="max-height:{height}px">'
+        f'<table class="tbl-custom"><thead><tr>{thead}</tr></thead>'
+        f'<tbody>{"".join(trs)}</tbody></table></div>',
+        unsafe_allow_html=True,
     )
-    rows = event.selection.rows
-    if rows:
-        pos = int(rows[0])
-        return df.iloc[pos].to_dict(), pos
+
+
+def select_table(df, key, height=380):
+    base = df.data if (Styler is not None and isinstance(df, Styler)) else df
+    tabel_html(base, height=height)
+    labels = [f"{i + 1}. " + " | ".join(str(v) for v in r[:3]) for i, r in base.iterrows()]
+    pilihan = st.selectbox("Pilih baris untuk aksi", [""] + labels, key=f"{key}_sel")
+    if pilihan:
+        pos = labels.index(pilihan)
+        return base.iloc[pos].to_dict(), pos
     return None, None
 
 
@@ -282,6 +553,13 @@ def hapus_dialog(label, aksi):
 # ---------- Dashboard ----------
 
 def page_dashboard():
+    st.markdown(
+        f'<div class="welcome-card">'
+        f'<div class="welcome-title">Welcome back, {html.escape(st.session_state.get("username", ""))}!</div>'
+        f'<div class="welcome-sub">Your personal academic tracker is ready.</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
     page_header(*PAGE_TITLES["Dashboard"])
     flash()
     r = db.rekap_keseluruhan()
@@ -294,7 +572,9 @@ def page_dashboard():
             ("Alpa", r["jml_alpa"], "#ef4444"),
             ("Izin / Sakit", r["jml_keterangan"], "#f59e0b"),
             ("Kehadiran", f"{pct}%", "#8b5cf6"),
-            ("Tugas Selesai", f"{r['jml_tugas_selesai']}/{r['jml_tugas']}", "#06b6d4"),
+            ("Tugas Diserahkan", f"{r['jml_tugas_selesai']}/{r['jml_tugas']}", "#06b6d4"),
+            ("Total UTS SELESAI", r["jml_uts_selesai"], "#f472b6"),
+            ("Total UAS SELESAI", r["jml_uas_selesai"], "#a78bfa"),
         ]
     )
 
@@ -308,7 +588,7 @@ def page_dashboard():
                 lambda x: f"{round(x['hadir'] / x['total_pertemuan'] * 100)}%" if x["total_pertemuan"] else "-",
                 axis=1,
             )
-            st.dataframe(
+            tabel_html(
                 df[["nama", "total_pertemuan", "hadir", "alpa", "kehadiran"]].rename(
                     columns={
                         "nama": "Matakuliah",
@@ -317,14 +597,13 @@ def page_dashboard():
                         "alpa": "Alpa",
                     }
                 ),
-                hide_index=True,
-                width="stretch",
+                height=300,
             )
         else:
             st.info("Belum ada matakuliah. Tambahkan di menu Jadwal Kuliah.")
         st.markdown("</div>", unsafe_allow_html=True)
     with c2:
-        st.markdown('<div class="panel"><div class="panel-title">Kehadiran per Bulan</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel"><div class="panel-title">Kehadiran per Semester</div>', unsafe_allow_html=True)
         bulan = db.hadir_per_bulan()
         if bulan:
             dfb = pd.DataFrame(bulan)
@@ -333,25 +612,44 @@ def page_dashboard():
             st.info("Belum ada data absen.")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown('<div class="panel"><div class="panel-title">Tugas yang Sudah Kamu Buat</div>', unsafe_allow_html=True)
-    done = db.tugas_list(status="Selesai")
+    st.markdown('<div class="panel"><div class="panel-title">Tugas yang Sudah Diserahkan</div>', unsafe_allow_html=True)
+    done = db.tugas_list(status="Diserahkan")
     if done:
-        st.dataframe(
+        tabel_html(
             pd.DataFrame(done)[["matakuliah", "tipe", "judul", "deadline", "tanggal_selesai", "nilai"]].rename(
                 columns={
                     "matakuliah": "Matakuliah",
                     "tipe": "Tipe",
                     "judul": "Judul Tugas",
                     "deadline": "Deadline",
-                    "tanggal_selesai": "Selesai Tanggal",
+                    "tanggal_selesai": "Diserahkan",
                     "nilai": "Nilai",
                 }
             ),
-            hide_index=True,
-            width="stretch",
+            height=250,
         )
     else:
-        st.info("Belum ada tugas yang selesai. Semangat!")
+        st.info("Belum ada tugas yang diserahkan. Semangat!")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="panel"><div class="panel-title">Tugas yang Belum Diserahkan / Tidak Diserahkan</div>', unsafe_allow_html=True)
+    belum = [t for t in db.tugas_list() if t["status"] != "Diserahkan"]
+    jml_terlambat = sum(1 for t in belum if t["status_tampil"] == "Terlambat")
+    if belum:
+        dfu = pd.DataFrame(belum)[["matakuliah", "tipe", "judul", "deadline", "status_tampil"]].rename(
+            columns={
+                "matakuliah": "Matakuliah",
+                "tipe": "Tipe",
+                "judul": "Judul Tugas",
+                "deadline": "Deadline",
+                "status_tampil": "Status",
+            }
+        )
+        tabel_html(dfu, height=300)
+        if jml_terlambat:
+            st.warning(f"{jml_terlambat} tugas di antaranya sudah melewati deadline (Terlambat).")
+    else:
+        st.success("Semua tugas sudah diserahkan. Mantap!")
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -361,59 +659,50 @@ def page_jadwal():
     page_header(*PAGE_TITLES["Jadwal Kuliah"])
     flash()
 
-    with st.expander("Tambah Matakuliah", expanded=False):
-        with st.form("frm_mk"):
-            c1, c2 = st.columns(2)
-            kode = c1.text_input("Kode (opsional)")
-            nama = c2.text_input("Nama Matakuliah")
-            c3, c4 = st.columns(2)
-            dosen = c3.text_input("Dosen")
-            sks = c4.number_input("SKS", min_value=1, max_value=6, value=3)
-            submitted = st.form_submit_button("Simpan", type="primary", width="stretch")
-        if submitted:
+    ver = st.session_state.get("_mk_form_ver", 0)
+    tutup_form = st.session_state.pop("_mk_form_tutup", False)
+    with st.expander("Tambah Matakuliah + Jadwal", expanded=not tutup_form):
+        c1, c2 = st.columns(2)
+        kode = c1.text_input("Kode MK", key=f"kode_mk_{ver}")
+        nama = c2.text_input("Matakuliah", key=f"nama_mk_{ver}")
+        c3, c4 = st.columns(2)
+        dosen = c3.text_input("Dosen", key=f"dosen_mk_{ver}")
+        sks = c4.number_input("SKS", min_value=1, max_value=6, value=3, key=f"sks_mk_{ver}")
+        t1, t2 = st.columns(2)
+        jam_masuk = t1.text_input("Jam Masuk", value="08:00", key=f"jm_mulai_{ver}")
+        jam_selesai = t2.text_input("Jam Selesai", value="12:40", key=f"jm_selesai_{ver}")
+        c5, c6 = st.columns(2)
+        hari = c5.selectbox("Hari", db.HARI, key=f"hari_mk_{ver}")
+        ruang = c6.text_input("Ruang", key=f"ruang_mk_{ver}")
+        st.caption("Jam selesai diisi manual sesuai jadwal kampus.")
+        if st.button("Simpan", type="primary", width="stretch"):
+            jm = _norm_jam(jam_masuk)
+            js = _norm_jam(jam_selesai)
             if not nama.strip():
                 st.error("Nama matakuliah wajib diisi.")
+            elif jm is None:
+                st.error("Jam masuk tidak valid (contoh: 10:10).")
+            elif js is None:
+                st.error("Jam selesai tidak valid (contoh: 12:40).")
+            elif js <= jm:
+                st.error("Jam selesai harus setelah jam masuk.")
             else:
-                mid = db.add_matakuliah(kode.strip(), nama.strip(), dosen.strip(), int(sks))
+                mid = db.add_matakuliah(
+                    kode.strip(), nama.strip(), dosen.strip(), int(sks), jm, js,
+                )
                 if mid is None:
                     st.error(f"Matakuliah dengan kode '{kode}' sudah ada.")
                 else:
-                    st.session_state["flash"] = f"Matakuliah '{nama}' ditambahkan."
+                    db.add_jadwal(
+                        mid, hari, jm, js, ruang.strip(),
+                    )
+                    st.session_state["flash"] = f"Matakuliah '{nama}' + jadwal ditambahkan."
+                    st.session_state["_mk_form_ver"] = ver + 1
+                    st.session_state["_mk_form_tutup"] = True
                     sync.push()
                     st.rerun()
 
     mk_list = db.matakuliah_list()
-    if not mk_list:
-        st.info("Tambahkan matakuliah dulu sebelum mengatur jadwal.")
-        return
-
-    with st.expander("Tambah Jadwal", expanded=False):
-        with st.form("frm_jdwl"):
-            mk = st.selectbox(
-                "Matakuliah",
-                [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_list],
-            )
-            c1, c2 = st.columns(2)
-            hari = c1.selectbox("Hari", db.HARI)
-            ruang = c2.text_input("Ruang")
-            t1, t2 = st.columns(2)
-            mulai = t1.time_input("Jam Mulai", value=__import__("datetime").time(8, 0))
-            selesai = t2.time_input("Jam Selesai", value=__import__("datetime").time(9, 40))
-            submitted = st.form_submit_button("Simpan", type="primary", width="stretch")
-        if submitted:
-            if selesai <= mulai:
-                st.error("Jam selesai harus setelah jam mulai.")
-            else:
-                mid = mk_list[mk.index(mk)]["id"]
-                db.add_jadwal(
-                    mid, hari,
-                    f"{mulai.hour:02d}:{mulai.minute:02d}",
-                    f"{selesai.hour:02d}:{selesai.minute:02d}",
-                    ruang.strip(),
-                )
-                st.session_state["flash"] = "Jadwal ditambahkan."
-                sync.push()
-                st.rerun()
 
     st.markdown(f'<div class="panel"><div class="panel-title">Daftar Jadwal ({len(db.jadwal_list())})</div>', unsafe_allow_html=True)
     jdwl = db.jadwal_list()
@@ -435,15 +724,23 @@ def page_jadwal():
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown(f'<div class="panel"><div class="panel-title">Daftar Matakuliah ({len(mk_list)})</div>', unsafe_allow_html=True)
-    dfm = pd.DataFrame(mk_list)[["nama", "kode", "dosen", "sks"]].rename(
-        columns={"nama": "Matakuliah", "kode": "Kode", "dosen": "Dosen", "sks": "SKS"}
-    )
-    selm, posm = select_table(dfm, "tbl_mk", height=260)
-    if selm:
-        mid_sel = mk_list[posm]["id"]
-        st.caption("Menghapus matakuliah ikut menghapus jadwal, absen, dan tugasnya.")
-        if st.button("Hapus Matakuliah", width="stretch"):
-            hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(mid_sel))
+    dfm = pd.DataFrame(mk_list)
+    if not dfm.empty:
+        dfm["jam"] = dfm.apply(
+            lambda x: f"{x['jam_masuk']} - {x['jam_selesai']}" if x["jam_masuk"] else "-",
+            axis=1,
+        )
+        dfm = dfm[["nama", "kode", "dosen", "sks", "jam"]].rename(
+            columns={"nama": "Matakuliah", "kode": "Kode", "dosen": "Dosen", "sks": "SKS", "jam": "Jam Masuk"}
+        )
+        selm, posm = select_table(dfm, "tbl_mk", height=260)
+        if selm:
+            mid_sel = mk_list[posm]["id"]
+            st.caption("Menghapus matakuliah ikut menghapus jadwal, absen, dan tugasnya.")
+            if st.button("Hapus Matakuliah", width="stretch"):
+                hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(mid_sel))
+    else:
+        st.info("Belum ada matakuliah.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -473,21 +770,24 @@ def page_absen():
         ]
     )
 
+    ab_ver = st.session_state.get("_absen_ver", 0)
     with st.expander("Input Kehadiran", expanded=True):
-        with st.form("frm_absen"):
-            c1, c2 = st.columns(2)
-            tanggal = c1.date_input("Tanggal", value=date.today())
-            status = c2.selectbox("Status", db.STATUS_ABSEN)
-            catatan = st.text_input("Catatan (opsional)")
-            submitted = st.form_submit_button("Simpan", type="primary", width="stretch")
-        if submitted:
+        c1, c2 = st.columns(2)
+        with c1:
+            tanggal = st.date_input("Tanggal", value=date.today(), key=f"absen_tgl_{ab_ver}")
+        with c2:
+            status = st.selectbox("Status", db.STATUS_ABSEN, key=f"absen_status_{ab_ver}")
+        catatan = st.text_input("Catatan (opsional)", key=f"absen_cat_{ab_ver}")
+        st.markdown(f"**Hari: {db.HARI[tanggal.weekday()]}**")
+        if st.button("Simpan", type="primary", width="stretch"):
             ok = db.add_absensi(
                 m["id"], tanggal.isoformat(), status, catatan.strip()
             )
             if not ok:
                 st.error(f"Absen untuk {tanggal.isoformat()} sudah tercatat.")
             else:
-                st.session_state["flash"] = f"Absen {status} untuk {m['nama']} tanggal {tanggal.isoformat()} tersimpan."
+                st.session_state["flash"] = f"Absen {status} untuk {m['nama']} tanggal {tanggal.isoformat()} ({db.HARI[tanggal.weekday()]}) tersimpan."
+                st.session_state["_absen_ver"] = ab_ver + 1
                 sync.push()
                 st.rerun()
 
@@ -497,15 +797,7 @@ def page_absen():
         df = pd.DataFrame(rows)[["tanggal", "status", "catatan"]].rename(
             columns={"tanggal": "Tanggal", "status": "Status", "catatan": "Catatan"}
         )
-
-        def warna_status(v):
-            if v == "Hadir":
-                return "background-color: #dcfce7; color: #15803d; font-weight: 600;"
-            if v == "Alpa":
-                return "background-color: #fee2e2; color: #b91c1c; font-weight: 600;"
-            return "background-color: #fef3c7; color: #b45309; font-weight: 600;"
-
-        sel, pos = select_table(df.style.map(warna_status, subset=["Status"]), "tbl_absen", height=300)
+        sel, pos = select_table(df, "tbl_absen", height=300)
         if sel:
             aid = rows[pos]["id"]
             if st.button("Hapus Absen", width="stretch"):
@@ -522,7 +814,7 @@ def page_absen():
             lambda x: f"{round(x['hadir'] / x['total_pertemuan'] * 100)}%" if x["total_pertemuan"] else "-",
             axis=1,
         )
-        st.dataframe(
+        tabel_html(
             dfr[["nama", "total_pertemuan", "hadir", "alpa", "izin_sakit", "kehadiran"]].rename(
                 columns={
                     "nama": "Matakuliah", "total_pertemuan": "Pertemuan",
@@ -530,8 +822,7 @@ def page_absen():
                     "izin_sakit": "Izin/Sakit",
                 }
             ),
-            hide_index=True,
-            width="stretch",
+            height=300,
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -543,12 +834,18 @@ def edit_tugas(t, tid):
     with st.form("edit_tugas"):
         judul = st.text_input("Judul", value=t["judul"])
         deskripsi = st.text_area("Deskripsi", value=t["deskripsi"])
+        try:
+            _dl = datetime.fromisoformat(t["deadline"]) if t["deadline"] else None
+        except ValueError:
+            _dl = None
         c1, c2 = st.columns(2)
-        deadline = c1.date_input(
-            "Deadline", value=date.fromisoformat(t["deadline"]) if t["deadline"] else date.today()
+        deadline = c1.date_input("Deadline", value=_dl.date() if _dl else date.today())
+        jam_dl = c2.time_input(
+            "Pukul", value=_dl.time() if _dl else time(23, 59), step=timedelta(minutes=5)
         )
-        status = c2.selectbox("Status", db.STATUS_TUGAS, index=db.STATUS_TUGAS.index(t["status"]))
-        nilai = st.number_input("Nilai (jika sudah dinilai)", min_value=0.0, max_value=100.0,
+        c3, c4 = st.columns(2)
+        status = c3.selectbox("Status", db.STATUS_TUGAS, index=db.STATUS_TUGAS.index(t["status"]))
+        nilai = c4.number_input("Nilai (jika sudah dinilai)", min_value=0.0, max_value=100.0,
                                 value=float(t["nilai"]) if t["nilai"] is not None else 0.0)
         submitted = st.form_submit_button("Simpan Perubahan", type="primary", width="stretch")
     if submitted:
@@ -557,7 +854,8 @@ def edit_tugas(t, tid):
         else:
             db.update_tugas(
                 tid, judul=judul.strip(), deskripsi=deskripsi.strip(),
-                deadline=deadline.isoformat(), status=status,
+                deadline=datetime.combine(deadline, jam_dl).strftime("%Y-%m-%d %H:%M"),
+                status=status,
                 tanggal_selesai=date.today().isoformat(),
                 nilai=nilai if nilai else None,
             )
@@ -580,23 +878,27 @@ def page_tugas(tipe_filter):
         st.info("Tambahkan matakuliah dulu di menu Jadwal Kuliah.")
         return
 
+    tgs_ver = st.session_state.get("_tgs_ver", 0)
     with st.expander("Tambah Tugas", expanded=True):
         with st.form("frm_tgs"):
             mk = st.selectbox(
                 "Matakuliah",
                 [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_list],
+                key=f"tgs_mk_{tgs_ver}",
             )
             c1, c2 = st.columns(2)
             if is_ujian:
-                tipe = c1.selectbox("Tipe", ["UTS", "UAS"])
+                tipe = c1.selectbox("Tipe", ["UTS", "UAS"], key=f"tgs_tipe_{tgs_ver}")
             else:
                 tipe = "Harian"
-            deadline = c2.date_input("Deadline", value=date.today())
-            judul = st.text_input("Judul")
-            deskripsi = st.text_area("Deskripsi (opsional)")
+            d1, d2 = c2.columns(2)
+            deadline = d1.date_input("Deadline", value=date.today(), key=f"tgs_dl_{tgs_ver}")
+            jam_dl = d2.time_input("Pukul", value=time(23, 59), step=timedelta(minutes=5), key=f"tgs_jam_{tgs_ver}")
+            judul = st.text_input("Judul", key=f"tgs_judul_{tgs_ver}")
+            deskripsi = st.text_area("Deskripsi (opsional)", key=f"tgs_desk_{tgs_ver}")
             c3, c4 = st.columns(2)
-            status = c3.selectbox("Status", db.STATUS_TUGAS)
-            nilai = c4.number_input("Nilai (jika sudah dinilai)", min_value=0.0, max_value=100.0, value=0.0)
+            status = c3.selectbox("Status", db.STATUS_TUGAS, key=f"tgs_status_{tgs_ver}")
+            nilai = c4.number_input("Nilai (jika sudah dinilai)", min_value=0.0, max_value=100.0, value=0.0, key=f"tgs_nilai_{tgs_ver}")
             submitted = st.form_submit_button("Simpan", type="primary", width="stretch")
         if submitted:
             if not judul.strip():
@@ -605,43 +907,55 @@ def page_tugas(tipe_filter):
                 mid = mk_list[mk.index(mk)]["id"]
                 db.add_tugas(
                     mid, tipe, judul.strip(), deskripsi.strip(),
-                    deadline.isoformat(), status,
+                    datetime.combine(deadline, jam_dl).strftime("%Y-%m-%d %H:%M"),
+                    status,
                     nilai if nilai else None,
                 )
                 st.session_state["flash"] = f"Tugas {tipe} '{judul}' ditambahkan."
+                st.session_state["_tgs_ver"] = tgs_ver + 1
                 sync.push()
                 st.rerun()
 
     st.markdown("Filter status:", unsafe_allow_html=True)
     f_status = st.segmented_control(
-        "f_status", ["Semua", "Belum", "Selesai"], default="Semua",
+        "f_status", ["Semua", "Belum", "Terlambat", "Diserahkan"], default="Semua",
         key="filt_tugas", label_visibility="collapsed",
     )
-    status_filter = None if f_status == "Semua" else f_status
-    rows = db.tugas_list(tipe=tipe_filter, status=status_filter)
-    selesai = sum(1 for t in db.tugas_list(tipe=tipe_filter) if t["status"] == "Selesai")
 
-    st.markdown(f'<div class="panel"><div class="panel-title">Daftar {tipe_nama} ({selesai} selesai / {len(rows)} tampil)</div>', unsafe_allow_html=True)
-    if rows:
-        df = pd.DataFrame(rows)[["matakuliah", "judul", "deadline", "status", "nilai"]].rename(
+    rows = db.tugas_list(tipe=tipe_filter)
+    if is_ujian:
+        rows = [r for r in rows if r["tipe"] in ("UTS", "UAS")]
+    diserahkan = sum(1 for t in rows if t["status"] == "Diserahkan")
+    terlambat = [t for t in rows if t["status_tampil"] == "Terlambat"]
+    if f_status == "Semua":
+        rows_tampil = rows
+    else:
+        rows_tampil = [t for t in rows if t["status_tampil"] == f_status]
+
+    if terlambat:
+        st.warning(
+            f"{len(terlambat)} tugas sudah melewati deadline dan belum diserahkan: "
+            + ", ".join(f"'{t['judul']}'" for t in terlambat)
+        )
+
+    st.markdown(f'<div class="panel"><div class="panel-title">Daftar {tipe_nama} ({diserahkan} diserahkan / {len(rows_tampil)} tampil)</div>', unsafe_allow_html=True)
+    if rows_tampil:
+        df = pd.DataFrame(rows_tampil)[["matakuliah", "judul", "deadline", "status_tampil", "nilai"]].rename(
             columns={
                 "matakuliah": "Matakuliah", "judul": "Judul",
-                "deadline": "Deadline", "status": "Status", "nilai": "Nilai",
+                "deadline": "Deadline", "status_tampil": "Status", "nilai": "Nilai",
             }
         )
         df["Nilai"] = df["Nilai"].fillna("-").apply(lambda v: f"{v:g}" if v != "-" else "-")
 
-        def warna_status(v):
-            return "background-color: #dcfce7; color: #15803d; font-weight: 600;" if v == "Selesai" else ""
-
-        sel, pos = select_table(df.style.map(warna_status, subset=["Status"]), "tbl_tgs", height=320)
+        sel, pos = select_table(df, "tbl_tgs", height=320)
         if sel:
-            tid = rows[pos]["id"]
-            t = rows[pos]
+            tid = rows_tampil[pos]["id"]
+            t = rows_tampil[pos]
             c1, c2, c3 = st.columns(3)
-            if c1.button("Tandai Selesai", type="primary", width="stretch", disabled=t["status"] == "Selesai"):
-                db.update_tugas(tid, status="Selesai", tanggal_selesai=date.today().isoformat())
-                st.session_state["flash"] = f"'{t['judul']}' ditandai selesai."
+            if c1.button("Tandai Diserahkan", type="primary", width="stretch", disabled=t["status"] == "Diserahkan"):
+                db.update_tugas(tid, status="Diserahkan", tanggal_selesai=date.today().isoformat())
+                st.session_state["flash"] = f"'{t['judul']}' ditandai diserahkan."
                 sync.push()
                 st.rerun()
             if c2.button("Ubah", width="stretch"):
@@ -653,16 +967,84 @@ def page_tugas(tipe_filter):
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+# ---------- Login ----------
+
+def page_login():
+    st.markdown(
+        '<div class="login-card">'
+        '<div class="user-avatar login-avatar">NF</div>'
+        '<div class="login-title">SIKAD PRIBADI</div>'
+        '<div class="login-sub">Masuk untuk melanjutkan</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    col = st.columns([1, 1, 1])[1]
+    if not db.login_exists():
+        col.info("Buat akun dulu (pertama kali):")
+        with col.form("frm_buat_akun"):
+            u = st.text_input("Nama Lengkap")
+            p1 = st.text_input("NIM (Password)", type="password")
+            p2 = st.text_input("Ulangi NIM", type="password")
+            buat = st.form_submit_button("Buat Akun", type="primary", width="stretch")
+        if buat:
+            if not u.strip() or not p1:
+                col.error("Nama lengkap dan NIM wajib diisi.")
+            elif p1 != p2:
+                col.error("NIM tidak sama.")
+            elif len(p1) < 4:
+                col.error("NIM minimal 4 karakter.")
+            else:
+                db.create_login(u.strip(), p1, p1)
+                col.success(f"Akun '{u.strip()}' dibuat. Silakan masuk.")
+                st.rerun()
+    else:
+        with col.form("frm_login"):
+            u = st.text_input("Nama Lengkap")
+            p = st.text_input("NIM (Password)", type="password")
+            masuk = st.form_submit_button("Masuk", type="primary", width="stretch")
+        if masuk:
+            nama = db.check_login(u.strip(), p)
+            if nama:
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = nama
+                st.rerun()
+            else:
+                col.error("Nama atau NIM salah.")
+
+
 # ---------- Utama ----------
 
 if "synced_once" not in st.session_state:
     sync.pull()
     st.session_state["synced_once"] = True
 
-st.sidebar.markdown('<div class="sidebar-brand">Catatan Semester 5</div>', unsafe_allow_html=True)
+if not st.session_state.get("logged_in"):
+    page_login()
+    st.stop()
+
+st.sidebar.markdown('<div class="sidebar-brand">SIKAD PRIBADI</div>', unsafe_allow_html=True)
 st.sidebar.markdown('<div class="sidebar-sub">Catatan pribadi kuliah</div>', unsafe_allow_html=True)
+_akun = db.get_login()
+_nama = _akun.get("username", "") if _akun else st.session_state.get("username", "")
+_inisial = "".join([w[0].upper() for w in _nama.split()[:2]]) or "U"
+_role = "Mahasiswa"
+if _akun and _akun.get("nim"):
+    _role += f" | {_akun['nim']}"
+st.sidebar.markdown(
+    f'<div class="user-box">'
+    f'<div class="user-avatar">{html.escape(_inisial)}</div>'
+    f'<div><div class="user-name">{html.escape(_nama)}</div>'
+    f'<div class="user-role">{html.escape(_role)}</div></div>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
 
 page = st.sidebar.radio("Menu", list(PAGE_TITLES), label_visibility="collapsed")
+
+if st.sidebar.button("Keluar", width="stretch"):
+    st.session_state["logged_in"] = False
+    st.session_state.pop("username", None)
+    st.rerun()
 
 mode = sync.STATUS["mode"]
 warna = {"online": "🟢", "lokal": "🟡", "error": "🔴"}.get(mode, "🟡")
@@ -686,3 +1068,4 @@ st.sidebar.markdown(
     '<div class="sidebar-foot">Aplikasi pribadi — data tersimpan otomatis.</div>',
     unsafe_allow_html=True,
 )
+

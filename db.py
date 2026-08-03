@@ -1,13 +1,16 @@
+import hashlib
 import json
+from datetime import date, datetime
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
 DATA_FILE = BASE / "data" / "catatan.json"
+LOGIN_FILE = BASE / "data" / "login.json"
 
 HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 STATUS_ABSEN = ["Hadir", "Alpa", "Izin", "Sakit"]
 TIPE_TUGAS = ["Harian", "UTS", "UAS"]
-STATUS_TUGAS = ["Belum", "Selesai"]
+STATUS_TUGAS = ["Belum", "Diserahkan"]
 
 _HURUF_HARI = {
     "Senin": 1, "Selasa": 2, "Rabu": 3, "Kamis": 4,
@@ -39,6 +42,48 @@ def _next_id(items):
     return max([x["id"] for x in items], default=0) + 1
 
 
+# ---------- Login ----------
+
+def _hash_pw(pw):
+    return hashlib.sha256(pw.encode("utf-8")).hexdigest()
+
+
+def login_exists():
+    return LOGIN_FILE.exists()
+
+
+def create_login(username, nim, password):
+    LOGIN_FILE.parent.mkdir(exist_ok=True)
+    LOGIN_FILE.write_text(
+        json.dumps(
+            {"username": username, "nim": nim, "pass_hash": _hash_pw(password)},
+            ensure_ascii=False, indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def get_login():
+    if not LOGIN_FILE.exists():
+        return None
+    try:
+        return json.loads(LOGIN_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def check_login(username, password):
+    if not LOGIN_FILE.exists():
+        return None
+    try:
+        d = json.loads(LOGIN_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if d.get("username") == username and d.get("pass_hash") == _hash_pw(password):
+        return d.get("username")
+    return None
+
+
 # ---------- Matakuliah ----------
 
 def get_matakuliah(mid):
@@ -48,7 +93,7 @@ def get_matakuliah(mid):
     return None
 
 
-def add_matakuliah(kode, nama, dosen, sks):
+def add_matakuliah(kode, nama, dosen, sks, jam_masuk="", jam_selesai=""):
     data = load_data()
     for m in data["matakuliah"]:
         if kode and m.get("kode") and m["kode"].lower() == kode.lower():
@@ -59,6 +104,8 @@ def add_matakuliah(kode, nama, dosen, sks):
         "nama": nama,
         "dosen": dosen,
         "sks": int(sks),
+        "jam_masuk": jam_masuk,
+        "jam_selesai": jam_selesai,
     }
     data["matakuliah"].append(m)
     save_data(data)
@@ -95,6 +142,8 @@ def matakuliah_list():
                 "nama": m["nama"],
                 "dosen": m["dosen"],
                 "sks": m["sks"],
+                "jam_masuk": m.get("jam_masuk", ""),
+                "jam_selesai": m.get("jam_selesai", ""),
                 "total_pertemuan": len(absen),
                 "hadir": hadir,
                 "alpa": sum(1 for a in absen if a["status"] == "Alpa"),
@@ -248,6 +297,20 @@ def delete_tugas(tid):
     save_data(data)
 
 
+def _status_tampil(t):
+    """Status tampil: Diserahkan / Terlambat (lewat deadline, belum diserahkan) / Belum."""
+    if t["status"] == "Diserahkan":
+        return "Diserahkan"
+    if t["deadline"]:
+        try:
+            dl = datetime.fromisoformat(t["deadline"])
+        except ValueError:
+            dl = None
+        if dl is not None and dl < datetime.now():
+            return "Terlambat"
+    return "Belum"
+
+
 def tugas_list(tipe=None, status=None, id_matakuliah=None):
     data = load_data()
     mhs = {m["id"]: m["nama"] for m in data["matakuliah"]}
@@ -268,6 +331,7 @@ def tugas_list(tipe=None, status=None, id_matakuliah=None):
                 "deskripsi": t["deskripsi"],
                 "deadline": t["deadline"],
                 "status": t["status"],
+                "status_tampil": _status_tampil(t),
                 "tanggal_selesai": t["tanggal_selesai"],
                 "nilai": t["nilai"],
             }
@@ -291,10 +355,12 @@ def rekap_keseluruhan():
             1 for a in absen if a["status"] in ("Izin", "Sakit")
         ),
         "jml_tugas": len(tugas),
-        "jml_tugas_selesai": sum(1 for t in tugas if t["status"] == "Selesai"),
+        "jml_tugas_selesai": sum(1 for t in tugas if t["status"] == "Diserahkan"),
         "jml_harian": sum(1 for t in tugas if t["tipe"] == "Harian"),
         "jml_uts": sum(1 for t in tugas if t["tipe"] == "UTS"),
         "jml_uas": sum(1 for t in tugas if t["tipe"] == "UAS"),
+        "jml_uts_selesai": sum(1 for t in tugas if t["tipe"] == "UTS" and t["status"] == "Diserahkan"),
+        "jml_uas_selesai": sum(1 for t in tugas if t["tipe"] == "UAS" and t["status"] == "Diserahkan"),
     }
 
 
