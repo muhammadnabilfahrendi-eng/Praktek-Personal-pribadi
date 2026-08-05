@@ -94,11 +94,29 @@ def clear_jadwal_window():
 
 
 def jadwal_boleh_isi(tgl_iso):
-    """True jika user boleh mengisi jadwal pada tanggal tgl_iso (YYYY-MM-DD)."""
+    """True jika user boleh mengisi jadwal pada tanggal tgl_iso (YYYY-MM-DD).
+    False jika admin menonaktifkan pengisian, atau di luar periode."""
+    if load_data().get("_jadwal_locked"):
+        return False
     w = jadwal_window()
     if not w:
         return True
     return w["mulai"] <= tgl_iso <= w["selesai"]
+
+
+def jadwal_locked():
+    """True jika admin menonaktifkan pengisian jadwal kuliah (kunci global)."""
+    return bool(load_data().get("_jadwal_locked"))
+
+
+def set_jadwal_locked(locked):
+    """Kunci/buka pengisian jadwal kuliah untuk semua user."""
+    all_d = load_data()
+    if locked:
+        all_d["_jadwal_locked"] = True
+    else:
+        all_d.pop("_jadwal_locked", None)
+    save_data(all_d)
 
 
 def _next_id(items):
