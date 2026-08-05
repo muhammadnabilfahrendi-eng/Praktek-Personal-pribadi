@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
@@ -11,7 +11,7 @@ ADMIN_FILE = BASE / "data" / "admin.json"
 HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 STATUS_ABSEN = ["Hadir", "Alpa", "Izin", "Sakit"]
 TIPE_TUGAS = ["Harian", "UTS", "UAS"]
-STATUS_TUGAS = ["Belum", "Diserahkan"]
+STATUS_TUGAS = ["Belum", "Diserahkan", "Terlambat"]
 
 _HURUF_HARI = {
     "Senin": 1, "Selasa": 2, "Rabu": 3, "Kamis": 4,
@@ -121,6 +121,12 @@ def set_jadwal_locked(locked):
 
 def _next_id(items):
     return max([x["id"] for x in items], default=0) + 1
+
+
+def now_wib():
+    """Waktu sekarang wall-clock WIB (UTC+7), tanpa info zona.
+    Semua deadline/batas waktu memakai zona ini agar konsisten."""
+    return datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None)
 
 
 # ---------- Login ----------
@@ -753,8 +759,47 @@ def delete_tugas(user, tid):
     save_user(user, data)
 
 
+def serahkan_tugas(user, tid, now_str=None):
+    """User menyerahkan tugas. Otomatis 'Terlambat' jika menyerah lewat
+    deadline lebih dari 30 menit. Kembalikan status baru atau None."""
+    data = data_user(user)
+    for t in data["tugas"]:
+        if t["id"] == tid:
+            t["status"] = "Diserahkan"
+            t["tanggal_selesai"] = date.today().isoformat()
+            if t.get("deadline"):
+                try:
+                    dl = datetime.strptime(t["deadline"], "%Y-%m-%d %H:%M")
+                    now = (
+                        datetime.strptime(now_str, "%Y-%m-%d %H:%M")
+                        if now_str else now_wib()
+                    )
+                    if now > dl + timedelta(minutes=30):
+                        t["status"] = "Terlambat"
+                except ValueError:
+                    pass
+            save_user(user, data)
+            return t["status"]
+    return None
+
+
+def batal_tugas(user, tid):
+    """User membatalkan penyerahan (kembali ke Belum)."""
+    data = data_user(user)
+    for t in data["tugas"]:
+        if t["id"] == tid:
+            t["status"] = "Belum"
+            t["tanggal_selesai"] = ""
+            save_user(user, data)
+            return True
+    return False
+
+
 def _status_tampil(t):
-    """Status tampil: Diserahkan / Terlambat (lewat deadline, belum diserahkan) / Belum."""
+    """Status tampil: Diserahkan / Terlambat (lewat deadline +30 menit saat
+    diserahkan, atau lewat deadline tapi belum diserahkan) / Belum."""
+    if t["status"] == "Terlambat":
+        return "Terlambat"
     if t["status"] == "Diserahkan":
         return "Diserahkan"
     if t["deadline"]:
@@ -762,7 +807,7 @@ def _status_tampil(t):
             dl = datetime.fromisoformat(t["deadline"])
         except ValueError:
             dl = None
-        if dl is not None and dl < datetime.now():
+        if dl is not None and dl < now_wib():
             return "Terlambat"
     return "Belum"
 
@@ -811,12 +856,12 @@ def rekap_keseluruhan(user):
             1 for a in absen if a["status"] in ("Izin", "Sakit")
         ),
         "jml_tugas": len(tugas),
-        "jml_tugas_selesai": sum(1 for t in tugas if t["status"] == "Diserahkan"),
+        "jml_tugas_selesai": sum(1 for t in tugas if t["status"] in ("Diserahkan", "Terlambat")),
         "jml_harian": sum(1 for t in tugas if t["tipe"] == "Harian"),
         "jml_uts": sum(1 for t in tugas if t["tipe"] == "UTS"),
         "jml_uas": sum(1 for t in tugas if t["tipe"] == "UAS"),
-        "jml_uts_selesai": sum(1 for t in tugas if t["tipe"] == "UTS" and t["status"] == "Diserahkan"),
-        "jml_uas_selesai": sum(1 for t in tugas if t["tipe"] == "UAS" and t["status"] == "Diserahkan"),
+        "jml_uts_selesai": sum(1 for t in tugas if t["tipe"] == "UTS" and t["status"] in ("Diserahkan", "Terlambat")),
+        "jml_uas_selesai": sum(1 for t in tugas if t["tipe"] == "UAS" and t["status"] in ("Diserahkan", "Terlambat")),
     }
 
 

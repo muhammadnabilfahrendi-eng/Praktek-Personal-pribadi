@@ -801,7 +801,7 @@ def page_dashboard():
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="panel"><div class="panel-title">Tugas yang Sudah Diserahkan</div>', unsafe_allow_html=True)
-    done = db.tugas_list(_user, status="Diserahkan")
+    done = [t for t in db.tugas_list(_user) if t["status"] in ("Diserahkan", "Terlambat")]
     if done:
         tabel_html(
             pd.DataFrame(done)[["matakuliah", "tipe", "judul", "deadline", "tanggal_selesai", "nilai"]].rename(
@@ -820,7 +820,7 @@ def page_dashboard():
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="panel"><div class="panel-title">Tugas yang Belum Diserahkan / Tidak Diserahkan</div>', unsafe_allow_html=True)
-    belum = [t for t in db.tugas_list(_user) if t["status"] != "Diserahkan"]
+    belum = [t for t in db.tugas_list(_user) if t["status"] == "Belum"]
     jml_terlambat = sum(1 for t in belum if t["status_tampil"] == "Terlambat")
     if belum:
         dfu = pd.DataFrame(belum)[["matakuliah", "tipe", "judul", "deadline", "status_tampil"]].rename(
@@ -1266,7 +1266,10 @@ def page_tugas(tipe_filter, head=True):
             judul = st.text_input("Judul", key=f"tgs_judul_{ukey}")
             deskripsi = st.text_area("Deskripsi (opsional)", key=f"tgs_desk_{ukey}")
             c3, c4 = st.columns(2)
-            status = c3.selectbox("Status", db.STATUS_TUGAS, key=f"tgs_status_{ukey}")
+            status = c3.selectbox(
+                "Status", db.STATUS_TUGAS if _is_admin else ["Belum", "Diserahkan"],
+                key=f"tgs_status_{ukey}",
+            )
             nilai = c4.number_input("Nilai (jika sudah dinilai)", min_value=0.0, max_value=100.0, value=0.0, key=f"tgs_nilai_{ukey}")
             submitted = st.form_submit_button("Simpan", type="primary", width="stretch", key=f"tgs_simpan_{ukey}")
         if submitted:
@@ -1302,8 +1305,8 @@ def page_tugas(tipe_filter, head=True):
     rows = db.tugas_list(_user, tipe=tipe_filter)
     if is_ujian:
         rows = [r for r in rows if r["tipe"] in ("UTS", "UAS")]
-    diserahkan = sum(1 for t in rows if t["status"] == "Diserahkan")
-    terlambat = [t for t in rows if t["status_tampil"] == "Terlambat"]
+    diserahkan = sum(1 for t in rows if t["status"] in ("Diserahkan", "Terlambat"))
+    terlambat = [t for t in rows if t["status_tampil"] == "Terlambat" and t["status"] != "Terlambat"]
     if f_status == "Semua":
         rows_tampil = rows
     else:
@@ -1329,19 +1332,34 @@ def page_tugas(tipe_filter, head=True):
         if sel:
             tid = rows_tampil[pos]["id"]
             t = rows_tampil[pos]
-            c1, c2, c3 = st.columns(3)
-            if c1.button("Tandai Diserahkan", type="primary", width="stretch", disabled=t["status"] == "Diserahkan"):
-                db.update_tugas(_user, tid, status="Diserahkan", tanggal_selesai=date.today().isoformat())
-                st.session_state["flash"] = f"'{t['judul']}' ditandai diserahkan."
-                sync.push()
-                st.rerun()
-            if c2.button("Ubah", width="stretch"):
-                edit_tugas(t, tid, _user)
             if _is_admin:
+                c1, c2, c3 = st.columns(3)
+                if c1.button("Tandai Diserahkan", type="primary", width="stretch", disabled=t["status"] in ("Diserahkan", "Terlambat")):
+                    stt = db.serahkan_tugas(_user, tid)
+                    st.session_state["flash"] = f"'{t['judul']}' ditandai {'terlambat' if stt == 'Terlambat' else 'diserahkan'}."
+                    sync.push()
+                    st.rerun()
+                if c2.button("Ubah", width="stretch"):
+                    edit_tugas(t, tid, _user)
                 if c3.button("Hapus", width="stretch"):
                     hapus_dialog(t["judul"], lambda: db.delete_tugas(_user, tid))
             else:
-                c3.caption("🔒 Hapus hanya Admin")
+                sudah = t["status"] in ("Diserahkan", "Terlambat")
+                st.caption("Kamu hanya bisa menyerahkan atau membatalkan — deadline, judul, dan nilai diatur oleh admin.")
+                c1, c2 = st.columns(2)
+                if c1.button("Tandai Belum", width="stretch", disabled=not sudah):
+                    db.batal_tugas(_user, tid)
+                    st.session_state["flash"] = f"'{t['judul']}' ditandai belum diserahkan."
+                    sync.push()
+                    st.rerun()
+                if c2.button("Tandai Diserahkan", type="primary", width="stretch", disabled=sudah):
+                    stt = db.serahkan_tugas(_user, tid)
+                    if stt == "Terlambat":
+                        st.session_state["flash"] = f"⚠️ '{t['judul']}' diserahkan TERLAMBAT (lewat deadline lebih dari 30 menit)."
+                    else:
+                        st.session_state["flash"] = f"'{t['judul']}' ditandai diserahkan."
+                    sync.push()
+                    st.rerun()
     else:
         st.info("Belum ada tugas.")
     st.markdown("</div>", unsafe_allow_html=True)
