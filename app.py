@@ -1389,7 +1389,9 @@ def page_tugas(tipe_filter, head=True):
                 c1.markdown(f"**{t['matakuliah']}** — {t['judul']}<br>{sub}", unsafe_allow_html=True)
                 c2.markdown(f'<span class="tbl-badge" style="color:{warna}">{t["status_tampil"]}</span>', unsafe_allow_html=True)
                 with c3:
-                    if sudah:
+                    if t.get("dikunci"):
+                        st.caption(f'<span class="tbl-badge" style="color:#f87171">Tidak bisa ditandai</span> — lewat tenggat', unsafe_allow_html=True)
+                    elif sudah:
                         if st.button("Tandai Belum", width="stretch", key=f"tgs_batal_{t['id']}"):
                             db.batal_tugas(_user, t["id"])
                             st.session_state["flash"] = f"'{t['judul']}' ditandai belum diserahkan."
@@ -1399,7 +1401,7 @@ def page_tugas(tipe_filter, head=True):
                         if st.button("Tandai Diserahkan", type="primary", width="stretch", key=f"tgs_serah_{t['id']}"):
                             stt = db.serahkan_tugas(_user, t["id"])
                             if stt == "Terlambat":
-                                st.session_state["flash"] = f"⚠️ '{t['judul']}' diserahkan TERLAMBAT (lewat deadline lebih dari 30 menit)."
+                                st.session_state["flash"] = f"⚠️ '{t['judul']}' diserahkan TERLAMBAT (lewat deadline)."
                             else:
                                 st.session_state["flash"] = f"'{t['judul']}' ditandai diserahkan."
                             sync.push()

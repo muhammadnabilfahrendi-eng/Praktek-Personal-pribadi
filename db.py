@@ -766,7 +766,7 @@ def delete_tugas(user, tid):
 
 def serahkan_tugas(user, tid, now_str=None):
     """User menyerahkan tugas. Otomatis 'Terlambat' jika menyerah lewat
-    deadline lebih dari 30 menit. Kembalikan status baru atau None."""
+    deadline. Kembalikan status baru atau None."""
     data = data_user(user)
     for t in data["tugas"]:
         if t["id"] == tid:
@@ -779,7 +779,7 @@ def serahkan_tugas(user, tid, now_str=None):
                         datetime.strptime(now_str, "%Y-%m-%d %H:%M")
                         if now_str else now_wib()
                     )
-                    if now > dl + timedelta(minutes=30):
+                    if now > dl:
                         t["status"] = "Terlambat"
                 except ValueError:
                     pass
@@ -817,6 +817,20 @@ def _status_tampil(t):
     return "Belum"
 
 
+def _tugas_dikunci(t):
+    """Tugas terkunci untuk user jika belum diserahkan dan sudah lewat
+    deadline lebih dari 30 menit (masa tenggang) — tidak bisa ditandai lagi."""
+    if t["status"] in ("Diserahkan", "Terlambat"):
+        return False
+    if not t.get("deadline"):
+        return False
+    try:
+        dl = datetime.strptime(t["deadline"], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return False
+    return now_wib() > dl + timedelta(minutes=30)
+
+
 def tugas_list(user, tipe=None, status=None, id_matakuliah=None):
     data = data_user(user)
     mhs = {m["id"]: m["nama"] for m in data["matakuliah"]}
@@ -838,6 +852,7 @@ def tugas_list(user, tipe=None, status=None, id_matakuliah=None):
                 "deadline": t["deadline"],
                 "status": t["status"],
                 "status_tampil": _status_tampil(t),
+                "dikunci": _tugas_dikunci(t),
                 "tanggal_selesai": t["tanggal_selesai"],
                 "nilai": t["nilai"],
             }
