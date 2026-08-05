@@ -71,6 +71,36 @@ def save_user(user, data):
     save_data(all_d)
 
 
+# ---------- Pengaturan global ----------
+
+def jadwal_window():
+    """Periode pengisian jadwal: {"mulai": ..., "selesai": ...} atau None (bebas)."""
+    d = load_data().get("_jadwal_open")
+    if isinstance(d, dict) and d.get("mulai") and d.get("selesai"):
+        return {"mulai": str(d["mulai"]), "selesai": str(d["selesai"])}
+    return None
+
+
+def set_jadwal_window(mulai, selesai):
+    all_d = load_data()
+    all_d["_jadwal_open"] = {"mulai": str(mulai), "selesai": str(selesai)}
+    save_data(all_d)
+
+
+def clear_jadwal_window():
+    all_d = load_data()
+    all_d.pop("_jadwal_open", None)
+    save_data(all_d)
+
+
+def jadwal_boleh_isi(tgl_iso):
+    """True jika user boleh mengisi jadwal pada tanggal tgl_iso (YYYY-MM-DD)."""
+    w = jadwal_window()
+    if not w:
+        return True
+    return w["mulai"] <= tgl_iso <= w["selesai"]
+
+
 def _next_id(items):
     return max([x["id"] for x in items], default=0) + 1
 
