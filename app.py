@@ -623,7 +623,7 @@ PAGE_TITLES = {
     "Absen": ("Absen", "Catat kehadiranmu setiap masuk kelas."),
     "Tugas Harian": ("Tugas Harian", "Tugas harian yang kamu buat."),
     "UTS & UAS": ("UTS & UAS", "Jadwal, nilai, dan status ujian."),
-    "Kelola Akun": ("Kelola Akun", "Kelola akun user, sandi, dan periode jadwal (khusus admin)."),
+    "Pengaturan": ("Pengaturan", "Pengisian jadwal kuliah (periode & buka/tutup) dan kelola akun user (khusus admin)."),
     "Tugas Massal": ("Tugas Massal", "Tambah tugas ke banyak akun sekaligus (khusus admin)."),
     "Data Mahasiswa": ("Data Mahasiswa", "Lihat dan kelola data akun terpilih (khusus admin)."),
 }
@@ -1132,24 +1132,6 @@ def page_absen(head=True):
                     st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Kunci pengisian jadwal kuliah (untuk semua user)
-        st.markdown('<div class="panel"><div class="panel-title">Pengisian Jadwal Kuliah</div>', unsafe_allow_html=True)
-        if db.jadwal_locked():
-            st.caption("Status: **terkunci** — semua user hanya bisa melihat jadwalnya.")
-            if st.button("Aktifkan Kembali Pengisian Jadwal", width="stretch", key="jdwl_buka"):
-                db.set_jadwal_locked(False)
-                st.session_state["flash"] = "Pengisian jadwal kuliah diaktifkan kembali."
-                sync.push()
-                st.rerun()
-        else:
-            st.caption("Status: **bebas** — semua user bisa mengisi jadwal.")
-            if st.button("Nonaktifkan Pengisian Jadwal Kuliah", width="stretch", key="jdwl_kunci"):
-                db.set_jadwal_locked(True)
-                st.session_state["flash"] = "Pengisian jadwal kuliah dinonaktifkan — user hanya bisa melihat jadwal."
-                sync.push()
-                st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
     labels = [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_list]
     lbl = st.selectbox("Pilih Matakuliah", labels)
     m = mk_list[labels.index(lbl)]
@@ -1368,15 +1350,15 @@ def page_tugas(tipe_filter, head=True):
 # ---------- Kelola Akun (khusus admin) ----------
 
 def page_kelola():
-    page_header(*PAGE_TITLES["Kelola Akun"])
+    page_header(*PAGE_TITLES["Pengaturan"])
     flash()
 
-    st.markdown('<div class="panel"><div class="panel-title">Periode Pengisian Jadwal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel"><div class="panel-title">Pengisian Jadwal Kuliah</div>', unsafe_allow_html=True)
     w = db.jadwal_window()
     if w:
-        st.caption(f"Sedang aktif: **{w['mulai']} s/d {w['selesai']}** — di luar periode itu, user hanya bisa melihat jadwalnya.")
+        st.caption(f"Periode aktif: **{w['mulai']} s/d {w['selesai']}** — di luar periode itu, user hanya bisa melihat jadwalnya.")
     else:
-        st.caption("Saat ini **bebas** — semua user bisa mengisi jadwal kapan saja.")
+        st.caption("Periode: **bebas** — semua user bisa mengisi jadwal kapan saja.")
     now = date.today()
     c1, c2 = st.columns(2)
     mulai = c1.date_input("Periode mulai", value=date.fromisoformat(w["mulai"]) if w else now)
@@ -1395,6 +1377,21 @@ def page_kelola():
         sync.push()
         st.session_state["flash"] = "Periode pengisian jadwal dihapus — semua user bebas mengisi jadwal."
         st.rerun()
+    st.divider()
+    if db.jadwal_locked():
+        st.caption("Status pengisian jadwal: **terkunci** — semua user hanya bisa melihat jadwalnya.")
+        if st.button("Aktifkan Kembali Pengisian Jadwal", width="stretch"):
+            db.set_jadwal_locked(False)
+            sync.push()
+            st.session_state["flash"] = "Pengisian jadwal kuliah diaktifkan kembali."
+            st.rerun()
+    else:
+        st.caption("Status pengisian jadwal: **bebas** — semua user bisa mengisi jadwal.")
+        if st.button("Tutup Pengisian Jadwal Kuliah", width="stretch"):
+            db.set_jadwal_locked(True)
+            sync.push()
+            st.session_state["flash"] = "Pengisian jadwal kuliah ditutup — user hanya bisa melihat jadwal."
+            st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
     rows = db.akun_list()
@@ -1762,7 +1759,7 @@ if _is_admin:
 else:
     _user = _nama
 
-_MENU_ADMIN = ["Dashboard", "Kelola Akun", "Tugas Massal", "Data Mahasiswa"]
+_MENU_ADMIN = ["Dashboard", "Pengaturan", "Tugas Massal", "Data Mahasiswa"]
 _MENU_USER = ["Dashboard", "Jadwal Kuliah", "Absen", "Tugas Harian", "UTS & UAS"]
 _menu = _MENU_ADMIN if _is_admin else _MENU_USER
 page = st.sidebar.radio("Menu", list(_menu), label_visibility="collapsed")
@@ -1789,7 +1786,7 @@ elif page == "Tugas Harian":
     page_tugas("Harian")
 elif page == "UTS & UAS":
     page_tugas(None)
-elif page == "Kelola Akun":
+elif page == "Pengaturan":
     page_kelola()
 elif page == "Tugas Massal":
     page_tugas_massal()
