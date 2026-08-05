@@ -1116,32 +1116,46 @@ def page_absen(head=True):
                     sync.push()
                     st.rerun()
         else:
-            labels2 = [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_list]
-            pilih_mk = st.multiselect(
-                "Matakuliah yang dibuka (bisa lebih dari satu)", labels2, key="adm_buka_mk",
-            )
-            c1, c2 = st.columns(2)
-            with c1:
-                batas_tgl = st.date_input("Batas absen (tanggal)", value=date.today())
-            with c2:
-                batas_jam = _time_picker_ui("Batas absen (jam)", "23:55", "adm_buka_jam")
-            if st.button("Buka Absensi", type="primary", width="stretch", key="absen_buka"):
-                if not pilih_mk:
-                    st.error("Pilih minimal satu matakuliah.")
-                elif not batas_jam:
-                    st.error("Jam batas absen wajib diisi.")
-                else:
-                    batas = datetime.combine(
-                        batas_tgl, datetime.strptime(batas_jam, "%H:%M").time()
-                    ).strftime("%Y-%m-%d %H:%M")
-                    dibuka = []
-                    dilewati = []
-                    for label_mk in pilih_mk:
-                        m2 = mk_list[labels2.index(label_mk)]
-                        if db.buka_absen(_user, m2["id"], batas):
-                            dibuka.append(m2["nama"])
-                        else:
-                            dilewati.append(m2["nama"])
+            mk_hari_ini_ids = {
+                j["id_matakuliah"] for j in db.jadwal_list(_user, hari=hari_nama)
+            }
+            mk_hari_ini = [m for m in mk_list if m["id"] in mk_hari_ini_ids]
+            if not mk_hari_ini:
+                st.info(
+                    f"Tidak ada matakuliah berjadwal hari ini ({hari_nama}) — "
+                    "absensi hanya bisa dibuka untuk matakuliah yang ada di hari itu."
+                )
+            else:
+                st.caption(f"Hanya matakuliah berjadwal hari ini ({hari_nama}) yang bisa dibuka.")
+                labels2 = [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_hari_ini]
+                pilih_mk = st.multiselect(
+                    "Matakuliah yang dibuka (bisa lebih dari satu)", labels2, key="adm_buka_mk",
+                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    batas_tgl = st.date_input(
+                        "Batas absen (tanggal)", value=date.today(),
+                        min_value=date.today(), max_value=date.today(),
+                    )
+                with c2:
+                    batas_jam = _time_picker_ui("Batas absen (jam)", "23:55", "adm_buka_jam")
+                if st.button("Buka Absensi", type="primary", width="stretch", key="absen_buka"):
+                    if not pilih_mk:
+                        st.error("Pilih minimal satu matakuliah.")
+                    elif not batas_jam:
+                        st.error("Jam batas absen wajib diisi.")
+                    else:
+                        batas = datetime.combine(
+                            batas_tgl, datetime.strptime(batas_jam, "%H:%M").time()
+                        ).strftime("%Y-%m-%d %H:%M")
+                        dibuka = []
+                        dilewati = []
+                        for label_mk in pilih_mk:
+                            m2 = mk_hari_ini[labels2.index(label_mk)]
+                            if db.buka_absen(_user, m2["id"], batas):
+                                dibuka.append(m2["nama"])
+                            else:
+                                dilewati.append(m2["nama"])
                     pesan = []
                     if dibuka:
                         db.tambah_notifikasi(
