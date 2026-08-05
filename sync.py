@@ -8,6 +8,8 @@ BASE = Path(__file__).resolve().parent
 DATA_FILE = BASE / "data" / "catatan.json"
 GIST_FILE_NAME = "catatan.json"
 
+TIMEOUT = 8
+
 STATUS = {"mode": "lokal", "pesan": "Mode lokal (tanpa sinkronisasi cloud)"}
 
 
@@ -27,17 +29,20 @@ def _api(url, pat, method="get", payload=None):
         "Authorization": f"Bearer {pat}",
         "Accept": "application/vnd.github+json",
     }
-    if method == "get":
-        resp = requests.get(url, headers=headers, timeout=30)
-    elif method == "patch":
-        resp = requests.patch(url, headers=headers, json=payload, timeout=30)
-    else:
+    try:
+        if method == "get":
+            resp = requests.get(url, headers=headers, timeout=TIMEOUT)
+        elif method == "patch":
+            resp = requests.patch(url, headers=headers, json=payload, timeout=TIMEOUT)
+        else:
+            return None
+    except Exception:
         return None
     return resp if resp.ok else None
 
 
 def pull():
-    """Ambil data terbaru dari gist ke file lokal."""
+    """Ambil data terbaru dari gist ke file lokal. Tidak pernah memblokir lama."""
     pat, gist_id = _konfig()
     if not (pat and gist_id):
         STATUS["mode"] = "lokal"
@@ -67,7 +72,7 @@ def pull():
 
 
 def push():
-    """Unggah file lokal ke gist."""
+    """Unggah file lokal ke gist. Tidak pernah memblokir lama."""
     pat, gist_id = _konfig()
     if not (pat and gist_id) or not DATA_FILE.exists():
         return False
