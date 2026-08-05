@@ -49,11 +49,10 @@ def _window_absen(j):
     akhir = datetime.combine(tgl, t2.time()) + timedelta(hours=1)
     now = _now_wib()
     if now < mulai:
-        mnt = int((mulai - now).total_seconds() // 60) + 1
         return (
             "belum",
             f"bisa absen {mulai.strftime('%H:%M')} s/d {akhir.strftime('%H:%M')} "
-            f"(H-10 menit, {mnt} mnt lagi)",
+            "(H-10 menit, +1 jam setelah MK)",
         )
     if now > akhir:
         return (
@@ -849,33 +848,26 @@ def page_absen():
                 sub += f" · {j['ruang']}"
             ada = catat.get(j["id_matakuliah"])
             win, ket = _window_absen(j)
+            if ada:
+                badge = (
+                    f'<span class="tbl-badge" style="color:{_WARNA_STATUS.get(ada["status"], "#94a3b8")}">'
+                    f'{ada["status"]}</span>'
+                )
+            elif win == "aktif":
+                badge = '<span class="tbl-badge" style="color:#60a5fa">Bisa absen</span>'
+            elif win == "belum":
+                badge = '<span class="tbl-badge" style="color:#94a3b8">Belum waktunya</span>'
+            else:
+                badge = '<span class="tbl-badge" style="color:#64748b">Terlewat</span>'
+            if win == "aktif" and ket:
+                badge += f'<div class="absen-note">Absen {ket}</div>'
             c1, c2, c3 = st.columns([1.2, 2.9, 1.5])
             c1.markdown(f"**{j['jam_mulai'] or '-'}**")
             c2.markdown(
                 f"**{j['matakuliah']}**<br><small class='absen-sub'>{sub}</small>",
                 unsafe_allow_html=True,
             )
-            if ada:
-                c3.markdown(
-                    f'<span class="tbl-badge" style="color:{_WARNA_STATUS.get(ada["status"], "#94a3b8")}">'
-                    f'{ada["status"]}</span>',
-                    unsafe_allow_html=True,
-                )
-            elif win == "aktif":
-                c3.markdown(
-                    '<span class="tbl-badge" style="color:#60a5fa">Bisa absen</span>',
-                    unsafe_allow_html=True,
-                )
-            elif win == "belum":
-                c3.markdown(
-                    '<span class="tbl-badge" style="color:#94a3b8">Belum waktunya</span>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                c3.markdown(
-                    '<span class="tbl-badge" style="color:#64748b">Terlewat</span>',
-                    unsafe_allow_html=True,
-                )
+            c3.markdown(badge, unsafe_allow_html=True)
             if win == "aktif":
                 kb = st.columns(4)
                 for stt, kol in zip(db.STATUS_ABSEN, kb):
@@ -886,10 +878,6 @@ def page_absen():
                         st.session_state["flash"] = f"{j['matakuliah']} · {hari_nama} → {stt} ✔"
                         sync.push()
                         st.rerun()
-                st.markdown(
-                    f'<div class="absen-note">Absen {ket}</div>',
-                    unsafe_allow_html=True,
-                )
             else:
                 st.markdown(
                     f'<div class="absen-lock">Locked · {ket}</div>',
