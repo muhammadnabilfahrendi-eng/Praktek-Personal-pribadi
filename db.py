@@ -565,9 +565,9 @@ def tutup_absen(user):
     save_user(user, data)
 
 
-def absen_sesi_aktif(user, now_str):
-    """Sesi absen yang masih berlaku dan belum diabsen hari ini, atau None.
-    now_str: 'YYYY-MM-DD HH:MM'."""
+def absen_sesi_info(user, now_str):
+    """Info sesi absen yang dibuka admin, tanpa cek 'sudah absen hari ini'.
+    None jika tidak ada sesi, lewat batas, atau matakuliahnya sudah dihapus."""
     data = data_user(user)
     s = data.get("absen_sesi")
     if not s:
@@ -583,16 +583,25 @@ def absen_sesi_aktif(user, now_str):
                 return None
         except ValueError:
             pass
-    tgl = now_str[:10]
-    for a in data["absensi"]:
-        if a["id_matakuliah"] == s.get("id_matakuliah") and a["tanggal"] == tgl:
-            return None
     return {
         "id_matakuliah": s.get("id_matakuliah"),
         "matakuliah": m["nama"],
         "kode": m.get("kode", ""),
         "batas": s.get("batas", ""),
     }
+
+
+def absen_sesi_aktif(user, now_str):
+    """Sesi absen yang masih berlaku dan belum diabsen hari ini, atau None.
+    now_str: 'YYYY-MM-DD HH:MM'."""
+    info = absen_sesi_info(user, now_str)
+    if not info:
+        return None
+    tgl = now_str[:10]
+    for a in data_user(user)["absensi"]:
+        if a["id_matakuliah"] == info["id_matakuliah"] and a["tanggal"] == tgl:
+            return None
+    return info
 
 
 # ---------- Absensi ----------

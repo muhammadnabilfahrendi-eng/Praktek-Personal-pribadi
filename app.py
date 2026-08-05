@@ -1064,44 +1064,47 @@ def page_absen(head=True):
     # langsung, walau di luar jam jadwal normal (selama sesi masih aktif).
     sesi = db.absen_sesi_aktif(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
     if sesi:
-        sudah_bisa = any(
-            j["id_matakuliah"] == sesi["id_matakuliah"] and _window_absen(j)[0] == "aktif"
-            for j in jdwl
+        info_sesi = f" — batas {sesi['batas']}" if sesi["batas"] else ""
+        st.markdown(
+            f'<div class="absen-rule" style="color:#10b981">📢 Sesi absen dibuka admin'
+            f'{html.escape(info_sesi)} — absen sekarang!</div>',
+            unsafe_allow_html=True,
         )
-        if not sudah_bisa:
-            info_sesi = f" — batas {sesi['batas']}" if sesi["batas"] else ""
-            st.markdown(
-                f'<div class="absen-rule" style="color:#10b981">📢 Sesi absen dibuka admin'
-                f'{html.escape(info_sesi)} — absen sekarang!</div>',
-                unsafe_allow_html=True,
+        c1, c2, c3 = st.columns([1.2, 2.9, 1.5])
+        c1.markdown("**Sesi admin**")
+        c2.markdown(
+            f"**{html.escape(sesi['matakuliah'])}**<br><small class='absen-sub'>dibuka admin{html.escape(info_sesi)}</small>",
+            unsafe_allow_html=True,
+        )
+        c3.markdown(
+            '<span class="tbl-badge" style="color:#10b981">Bisa absen</span>',
+            unsafe_allow_html=True,
+        )
+        kb = st.columns(4)
+        for stt, kol in zip(db.STATUS_ABSEN, kb):
+            if kol.button(
+                stt, width="stretch",
+                key=f"sk_{sesi['id_matakuliah']}_{stt}_{tgl_hari.isoformat()}",
+            ):
+                db.set_absensi(_user, sesi["id_matakuliah"], tgl_hari.isoformat(), stt)
+                st.session_state["flash"] = f"{sesi['matakuliah']} · Sesi admin → {stt} ✔"
+                sync.push()
+                st.rerun()
+    else:
+        sesi_terbuka = db.absen_sesi_info(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
+        if sesi_terbuka:
+            st.caption(
+                f"📢 Sesi absen **{sesi_terbuka['matakuliah']}** dibuka admin, tapi kamu sudah absen hari ini — sesi tidak tampil karena sudah terisi."
             )
-            c1, c2, c3 = st.columns([1.2, 2.9, 1.5])
-            c1.markdown("**Sesi admin**")
-            c2.markdown(
-                f"**{html.escape(sesi['matakuliah'])}**<br><small class='absen-sub'>dibuka admin{html.escape(info_sesi)}</small>",
-                unsafe_allow_html=True,
-            )
-            c3.markdown(
-                '<span class="tbl-badge" style="color:#10b981">Bisa absen</span>',
-                unsafe_allow_html=True,
-            )
-            kb = st.columns(4)
-            for stt, kol in zip(db.STATUS_ABSEN, kb):
-                if kol.button(
-                    stt, width="stretch",
-                    key=f"sk_{sesi['id_matakuliah']}_{stt}_{tgl_hari.isoformat()}",
-                ):
-                    db.set_absensi(_user, sesi["id_matakuliah"], tgl_hari.isoformat(), stt)
-                    st.session_state["flash"] = f"{sesi['matakuliah']} · Sesi admin → {stt} ✔"
-                    sync.push()
-                    st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
     if _is_admin:
         st.markdown('<div class="panel"><div class="panel-title">Buka Absensi (Admin)</div>', unsafe_allow_html=True)
-        sesi = db.absen_sesi_aktif(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
+        sesi = db.absen_sesi_info(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
         if sesi:
-            st.caption(f"Sesi aktif: **{sesi['matakuliah']}**{' (batas ' + sesi['batas'] + ')' if sesi['batas'] else ''} — user sudah dapat notifikasi.")
+            sudah = db.absen_sesi_aktif(_user, _now_wib().strftime("%Y-%m-%d %H:%M")) is None
+            ket = " — user sudah absen hari ini, sesi tidak tampil di Absen Cepat." if sudah else ""
+            st.caption(f"Sesi aktif: **{sesi['matakuliah']}**{' (batas ' + sesi['batas'] + ')' if sesi['batas'] else ''}{ket}")
             if st.button("Tutup Absensi", width="stretch", key="absen_tutup"):
                 db.tutup_absen(_user)
                 st.session_state["flash"] = f"Sesi absensi '{sesi['matakuliah']}' ditutup."
