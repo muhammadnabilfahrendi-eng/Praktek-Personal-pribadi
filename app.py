@@ -870,8 +870,11 @@ def page_jadwal():
         sel, pos = select_table(df, "tbl_jdwl", height=300)
         if sel:
             jid = jdwl[pos]["id"]
-            if st.button("Hapus Jadwal", width="stretch"):
-                hapus_dialog(f"jadwal {sel['Matakuliah']} {sel['Hari']} {sel['Mulai']}", lambda: db.delete_jadwal(jid))
+            if _is_admin:
+                if st.button("Hapus Jadwal", width="stretch"):
+                    hapus_dialog(f"jadwal {sel['Matakuliah']} {sel['Hari']} {sel['Mulai']}", lambda: db.delete_jadwal(jid))
+            else:
+                st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
         st.info("Belum ada jadwal.")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -890,8 +893,11 @@ def page_jadwal():
         if selm:
             mid_sel = mk_list[posm]["id"]
             st.caption("Menghapus matakuliah ikut menghapus jadwal, absen, dan tugasnya.")
-            if st.button("Hapus Matakuliah", width="stretch"):
-                hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(mid_sel))
+            if _is_admin:
+                if st.button("Hapus Matakuliah", width="stretch"):
+                    hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(mid_sel))
+            else:
+                st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
         st.info("Belum ada matakuliah.")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1047,8 +1053,11 @@ def page_absen():
         sel, pos = select_table(df, "tbl_absen", height=300)
         if sel:
             aid = rows[pos]["id"]
-            if st.button("Hapus Absen", width="stretch"):
-                hapus_dialog(f"absen {sel['Tanggal']} ({sel['Status']})", lambda: db.delete_absensi(aid))
+            if _is_admin:
+                if st.button("Hapus Absen", width="stretch"):
+                    hapus_dialog(f"absen {sel['Tanggal']} ({sel['Status']})", lambda: db.delete_absensi(aid))
+            else:
+                st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
         st.info("Belum ada catatan absen untuk matakuliah ini.")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1211,8 +1220,11 @@ def page_tugas(tipe_filter):
                 st.rerun()
             if c2.button("Ubah", width="stretch"):
                 edit_tugas(t, tid)
-            if c3.button("Hapus", width="stretch"):
-                hapus_dialog(t["judul"], lambda: db.delete_tugas(tid))
+            if _is_admin:
+                if c3.button("Hapus", width="stretch"):
+                    hapus_dialog(t["judul"], lambda: db.delete_tugas(tid))
+            else:
+                c3.caption("🔒 Hapus hanya Admin")
     else:
         st.info("Belum ada tugas.")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1231,7 +1243,7 @@ def page_login():
     )
     col = st.columns([1, 1, 1])[1]
     if not db.login_exists():
-        col.info("Buat akun dulu (pertama kali):")
+        col.info("Buat akun dulu (pertama kali). Akun pertama otomatis menjadi **Admin**.")
         with col.form("frm_buat_akun"):
             u = st.text_input("Nama Lengkap")
             p1 = st.text_input("NIM (Password)", type="password")
@@ -1245,22 +1257,49 @@ def page_login():
             elif len(p1) < 4:
                 col.error("NIM minimal 4 karakter.")
             else:
-                db.create_login(u.strip(), p1, p1)
-                col.success(f"Akun '{u.strip()}' dibuat. Silakan masuk.")
-                st.rerun()
+                hasil = db.create_login(u.strip(), p1, p1)
+                if hasil == "ok":
+                    col.success(f"Akun '{u.strip()}' dibuat. Silakan masuk.")
+                    st.rerun()
+                else:
+                    col.error(hasil)
     else:
-        with col.form("frm_login"):
-            u = st.text_input("Nama Lengkap")
-            p = st.text_input("NIM (Password)", type="password")
-            masuk = st.form_submit_button("Masuk", type="primary", width="stretch")
-        if masuk:
-            nama = db.check_login(u.strip(), p)
-            if nama:
-                st.session_state["logged_in"] = True
-                st.session_state["username"] = nama
-                st.rerun()
-            else:
-                col.error("Nama atau NIM salah.")
+        daftar = col.toggle("Daftar akun baru", key="tgl_daftar")
+        if daftar:
+            col.caption("Nama dan NIM harus berbeda dari akun yang sudah ada.")
+            with col.form("frm_buat_akun2"):
+                u = st.text_input("Nama Lengkap")
+                p1 = st.text_input("NIM (Password)", type="password")
+                p2 = st.text_input("Ulangi NIM", type="password")
+                buat = st.form_submit_button("Daftar", type="primary", width="stretch")
+            if buat:
+                if not u.strip() or not p1:
+                    col.error("Nama lengkap dan NIM wajib diisi.")
+                elif p1 != p2:
+                    col.error("NIM tidak sama.")
+                elif len(p1) < 4:
+                    col.error("NIM minimal 4 karakter.")
+                else:
+                    hasil = db.create_login(u.strip(), p1, p1)
+                    if hasil == "ok":
+                        col.success(f"Akun '{u.strip()}' berhasil didaftarkan. Silakan masuk.")
+                        st.rerun()
+                    else:
+                        col.error(hasil)
+        else:
+            with col.form("frm_login"):
+                u = st.text_input("Nama Lengkap")
+                p = st.text_input("NIM (Password)", type="password")
+                masuk = st.form_submit_button("Masuk", type="primary", width="stretch")
+            if masuk:
+                akun = db.check_login(u.strip(), p)
+                if akun:
+                    st.session_state["logged_in"] = True
+                    st.session_state["username"] = akun["username"]
+                    st.session_state["akun"] = akun
+                    st.rerun()
+                else:
+                    col.error("Nama atau NIM salah.")
 
 
 # ---------- Utama ----------
@@ -1275,10 +1314,11 @@ if not st.session_state.get("logged_in"):
 
 st.sidebar.markdown('<div class="sidebar-brand">SIKAD PRIBADI</div>', unsafe_allow_html=True)
 st.sidebar.markdown('<div class="sidebar-sub">Catatan pribadi kuliah</div>', unsafe_allow_html=True)
-_akun = db.get_login()
+_akun = st.session_state.get("akun")
 _nama = _akun.get("username", "") if _akun else st.session_state.get("username", "")
+_is_admin = bool(_akun.get("admin")) if _akun else db.is_admin(_nama)
 _inisial = "".join([w[0].upper() for w in _nama.split()[:2]]) or "U"
-_role = "Mahasiswa"
+_role = "Admin" if _is_admin else "Mahasiswa"
 if _akun and _akun.get("nim"):
     _role += f" | {_akun['nim']}"
 st.sidebar.markdown(

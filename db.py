@@ -48,40 +48,79 @@ def _hash_pw(pw):
     return hashlib.sha256(pw.encode("utf-8")).hexdigest()
 
 
+def _login_all():
+    """Semua akun (list). Format lama (dict tunggal) otomatis dimigrasi ke list."""
+    if not LOGIN_FILE.exists():
+        return []
+    try:
+        d = json.loads(LOGIN_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if isinstance(d, dict):
+        akun = [
+            {
+                "username": d.get("username", ""),
+                "nim": d.get("nim", ""),
+                "pass_hash": d.get("pass_hash", ""),
+                "admin": True,
+            }
+        ]
+        _save_login_all(akun)
+        return akun
+    if isinstance(d, list):
+        return d
+    return []
+
+
+def _save_login_all(akun):
+    LOGIN_FILE.parent.mkdir(exist_ok=True)
+    LOGIN_FILE.write_text(
+        json.dumps(akun, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
 def login_exists():
     return LOGIN_FILE.exists()
 
 
 def create_login(username, nim, password):
-    LOGIN_FILE.parent.mkdir(exist_ok=True)
-    LOGIN_FILE.write_text(
-        json.dumps(
-            {"username": username, "nim": nim, "pass_hash": _hash_pw(password)},
-            ensure_ascii=False, indent=2,
-        ),
-        encoding="utf-8",
+    """Daftar akun baru. Kembalikan 'ok' atau pesan kesalahan (Nama/NIM sudah terpakai)."""
+    akun = _login_all()
+    uname = username.strip()
+    unim = nim.strip()
+    for a in akun:
+        if a.get("username", "").strip().lower() == uname.lower():
+            return "Nama sudah terdaftar"
+        if a.get("nim", "").strip() == unim:
+            return "NIM sudah terdaftar"
+    akun.append(
+        {
+            "username": uname,
+            "nim": unim,
+            "pass_hash": _hash_pw(password),
+            "admin": len(akun) == 0,
+        }
     )
-
-
-def get_login():
-    if not LOGIN_FILE.exists():
-        return None
-    try:
-        return json.loads(LOGIN_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+    _save_login_all(akun)
+    return "ok"
 
 
 def check_login(username, password):
-    if not LOGIN_FILE.exists():
-        return None
-    try:
-        d = json.loads(LOGIN_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    if d.get("username") == username and d.get("pass_hash") == _hash_pw(password):
-        return d.get("username")
+    """Kembalikan dict akun jika cocok, selain itu None."""
+    for a in _login_all():
+        if (
+            a.get("username", "").strip().lower() == username.strip().lower()
+            and a.get("pass_hash") == _hash_pw(password)
+        ):
+            return a
     return None
+
+
+def is_admin(username):
+    for a in _login_all():
+        if a.get("username", "").strip().lower() == username.strip().lower():
+            return bool(a.get("admin"))
+    return False
 
 
 # ---------- Matakuliah ----------
