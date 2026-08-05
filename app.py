@@ -1155,13 +1155,6 @@ def page_absen(head=True):
         )
         rows = db.absensi_list(_user, id_matakuliah=m["id"])
         if rows:
-            jam_per_hari = {
-                j["hari"]: f"{j['jam_mulai']}–{j['jam_selesai']}"
-                for j in db.jadwal_list(_user)
-                if j["id_matakuliah"] == m["id"]
-            }
-            jm = m.get("jam_masuk", "")
-            js = m.get("jam_selesai", "")
             detil = []
             for r in rows:
                 try:
@@ -1169,15 +1162,13 @@ def page_absen(head=True):
                     hari = db.HARI[tgl.weekday()]
                 except (ValueError, TypeError):
                     hari = "-"
-                jam = jam_per_hari.get(hari) or (f"{jm}–{js}" if jm else "-")
                 detil.append(
                     {
                         "matakuliah": m["nama"],
                         "kode": m.get("kode", ""),
                         "hari": hari,
                         "tanggal": r["tanggal"],
-                        "jam": jam,
-                        "pukul_absen": r.get("jam", "") or "-",
+                        "jam": r.get("jam", "") or "-",
                         "status": r["status"],
                         "catatan": r["catatan"],
                     }
@@ -1185,18 +1176,11 @@ def page_absen(head=True):
             df = pd.DataFrame(detil).rename(
                 columns={
                     "matakuliah": "Matakuliah", "kode": "Kode", "hari": "Hari",
-                    "tanggal": "Tanggal", "jam": "Jam", "pukul_absen": "Absen Pukul",
-                    "status": "Status", "catatan": "Catatan",
+                    "tanggal": "Tanggal", "jam": "Jam", "status": "Status",
+                    "catatan": "Catatan",
                 }
             )
-            sel, pos = select_table(df, "tbl_absen", height=300)
-            if sel:
-                aid = rows[pos]["id"]
-                if _is_admin:
-                    if st.button("Hapus Absen", width="stretch", key="absen_hapus"):
-                        hapus_dialog(f"absen {sel['Tanggal']} ({sel['Status']})", lambda: db.delete_absensi(_user, aid))
-                else:
-                    st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
+            tabel_html(df, height=300)
         else:
             st.info(f"Belum ada catatan absen untuk {m['nama']}.")
 
