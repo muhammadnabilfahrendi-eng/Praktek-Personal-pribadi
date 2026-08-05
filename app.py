@@ -1,6 +1,7 @@
 ﻿import base64
 import html
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -28,14 +29,15 @@ def _norm_jam(s):
     return f"{j:02d}:{mnt:02d}"
 
 
-JAM_OPTIONS = [f"{h:02d}:{m:02d}" for h in range(24) for m in range(0, 60, 5)]
+_TIME_PICKER = components.declare_component(
+    "time_picker", path=str(Path(__file__).resolve().parent / "components" / "time_picker")
+)
 
 
-def _jam_index(s):
-    try:
-        return JAM_OPTIONS.index(s)
-    except ValueError:
-        return 0
+def _time_picker_ui(label, value, key):
+    """Picker jam popup (native browser). Mengembalikan 'HH:MM' atau ''."""
+    res = _TIME_PICKER(value=value, label=label, key=key)
+    return value if res is None else (res or "")
 
 
 def _now_wib():
@@ -820,8 +822,10 @@ def page_jadwal():
         dosen = c3.text_input("Dosen", key=f"dosen_mk_{ver}")
         sks = c4.number_input("SKS", min_value=1, max_value=6, value=3, key=f"sks_mk_{ver}")
         t1, t2 = st.columns(2)
-        jam_masuk = t1.selectbox("Jam Masuk", JAM_OPTIONS, index=_jam_index("08:00"), key=f"jm_mulai_{ver}")
-        jam_selesai = t2.selectbox("Jam Selesai", JAM_OPTIONS, index=_jam_index("12:40"), key=f"jm_selesai_{ver}")
+        with t1:
+            jam_masuk = _time_picker_ui("Jam Masuk", "08:00", f"jm_pick_mulai_{ver}")
+        with t2:
+            jam_selesai = _time_picker_ui("Jam Selesai", "12:40", f"jm_pick_selesai_{ver}")
         c5, c6 = st.columns(2)
         hari = c5.selectbox("Hari", db.HARI, key=f"hari_mk_{ver}")
         ruang = c6.text_input("Ruang", key=f"ruang_mk_{ver}")
@@ -831,6 +835,8 @@ def page_jadwal():
             js = jam_selesai
             if not nama.strip():
                 st.error("Nama matakuliah wajib diisi.")
+            elif not jm or not js:
+                st.error("Jam masuk dan jam selesai wajib diisi.")
             elif js <= jm:
                 st.error("Jam selesai harus setelah jam masuk.")
             else:
@@ -1081,9 +1087,8 @@ def edit_tugas(t, tid):
             _dl = None
         c1, c2 = st.columns(2)
         deadline = c1.date_input("Deadline", value=_dl.date() if _dl else date.today())
-        jam_dl = c2.selectbox(
-            "Pukul", JAM_OPTIONS, index=_jam_index(_dl.strftime("%H:%M") if _dl else "23:55")
-        )
+        with c2:
+            jam_dl = _time_picker_ui("Pukul", _dl.strftime("%H:%M") if _dl else "23:55", f"dlg_jam_{tid}")
         c3, c4 = st.columns(2)
         status = c3.selectbox("Status", db.STATUS_TUGAS, index=db.STATUS_TUGAS.index(t["status"]))
         nilai = c4.number_input("Nilai (jika sudah dinilai)", min_value=0.0, max_value=100.0,
@@ -1092,6 +1097,8 @@ def edit_tugas(t, tid):
     if submitted:
         if not judul.strip():
             st.error("Judul wajib diisi.")
+        elif not jam_dl:
+            st.error("Pukul wajib diisi.")
         else:
             db.update_tugas(
                 tid, judul=judul.strip(), deskripsi=deskripsi.strip(),
@@ -1134,7 +1141,8 @@ def page_tugas(tipe_filter):
                 tipe = "Harian"
             d1, d2 = c2.columns(2)
             deadline = d1.date_input("Deadline", value=date.today(), key=f"tgs_dl_{tgs_ver}")
-            jam_dl = d2.selectbox("Pukul", JAM_OPTIONS, index=_jam_index("23:55"), key=f"tgs_jam_{tgs_ver}")
+            with d2:
+                jam_dl = _time_picker_ui("Pukul", "23:55", f"tgs_pick_jam_{tgs_ver}")
             judul = st.text_input("Judul", key=f"tgs_judul_{tgs_ver}")
             deskripsi = st.text_area("Deskripsi (opsional)", key=f"tgs_desk_{tgs_ver}")
             c3, c4 = st.columns(2)
@@ -1144,6 +1152,8 @@ def page_tugas(tipe_filter):
         if submitted:
             if not judul.strip():
                 st.error("Judul wajib diisi.")
+            elif not jam_dl:
+                st.error("Pukul wajib diisi.")
             else:
                 mid = mk_list[mk.index(mk)]["id"]
                 db.add_tugas(
