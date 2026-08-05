@@ -113,12 +113,12 @@ def _timer_html(uid, end_epoch, badge_html, txt_awal, txt_selesai):
 
 
 def _clock_html():
-    """Jam real-time WIB (hari, tanggal, jam) — berdetak tiap detik."""
-    tpl = """<div class="clock-box">
-<div id="clk_tgl_UID" class="clock-tgl">-</div>
-<div id="clk_jam_UID" class="clock-jam">--:--:--</div>
-<div class="clock-wib">WIB (UTC+7)</div>
+    """Jam real-time WIB: jam besar + label WIB kecil sejajar, tanggal di bawah."""
+    tpl = """<div style="display:flex;align-items:baseline;justify-content:center;gap:8px;max-width:420px;margin:0 auto;padding:14px 18px;border-radius:14px;border:1px solid rgba(96,165,250,.35);background:linear-gradient(120deg,rgba(59,130,246,.16),rgba(6,182,212,.12));font-family:'Segoe UI',sans-serif">
+<span id="clk_jam_UID" style="font-size:2.1rem;font-weight:800;color:#f8fafc;letter-spacing:1px;font-variant-numeric:tabular-nums">--:--</span>
+<span style="font-size:.8rem;color:#7f8ea3;font-weight:400">WIB (UTC+7)</span>
 </div>
+<div id="clk_tgl_UID" style="text-align:center;margin-top:6px;font-size:.95rem;font-weight:700;color:#e2e8f0;font-family:'Segoe UI',sans-serif">-</div>
 <script>
 (function() {
   var HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
@@ -126,10 +126,10 @@ def _clock_html():
   function p(n) { return (n < 10 ? '0' : '') + n; }
   function tick() {
     var d = new Date(Date.now() + 7 * 3600 * 1000);
+    var jam = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
     var tgl = HARI[d.getUTCDay()] + ', ' + d.getUTCDate() + ' ' + BLN[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
-    var jam = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds());
-    document.getElementById('clk_tgl_UID').textContent = tgl;
     document.getElementById('clk_jam_UID').textContent = jam;
+    document.getElementById('clk_tgl_UID').textContent = tgl;
   }
   tick();
   setInterval(tick, 1000);
@@ -505,31 +505,6 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
     border-radius: 10px;
     color: #64748b;
     font-size: .78rem;
-}
-.clock-box {
-    padding: 12px 18px;
-    border-radius: 14px;
-    border: 1px solid rgba(96,165,250,.35);
-    background: linear-gradient(120deg, rgba(59,130,246,.16), rgba(6,182,212,.12));
-    text-align: center;
-    max-width: 420px;
-    margin: 0 auto 16px auto;
-}
-.clock-tgl {
-    font-size: .95rem;
-    font-weight: 700;
-    color: #e2e8f0;
-}
-.clock-jam {
-    font-size: 1.9rem;
-    font-weight: 800;
-    color: #f8fafc;
-    letter-spacing: 1px;
-    font-variant-numeric: tabular-nums;
-}
-.clock-wib {
-    font-size: .72rem;
-    color: #7f8ea3;
 }
 
 [data-testid="stButton"] button[kind="primary"], [data-testid="stFormSubmitButton"] button[kind="primary"] {
