@@ -620,6 +620,7 @@ PAGE_TITLES = {
     "Absen": ("Absen", "Catat kehadiranmu setiap masuk kelas."),
     "Tugas Harian": ("Tugas Harian", "Tugas harian yang kamu buat."),
     "UTS & UAS": ("UTS & UAS", "Jadwal, nilai, dan status ujian."),
+    "Kelola Akun": ("Kelola Akun", "Kelola akun user dan datanya (khusus admin)."),
 }
 
 
@@ -715,7 +716,7 @@ def page_dashboard():
     )
     page_header(*PAGE_TITLES["Dashboard"])
     flash()
-    r = db.rekap_keseluruhan()
+    r = db.rekap_keseluruhan(_user)
     pct = round(r["jml_hadir"] / r["jml_pertemuan"] * 100) if r["jml_pertemuan"] else 0
     stat_cards(
         [
@@ -734,7 +735,7 @@ def page_dashboard():
     c1, c2 = st.columns(2)
     with c1:
         st.markdown('<div class="panel"><div class="panel-title">Rekap per Matakuliah</div>', unsafe_allow_html=True)
-        rows = db.matakuliah_list()
+        rows = db.matakuliah_list(_user)
         if rows:
             df = pd.DataFrame(rows)
             df["kehadiran"] = df.apply(
@@ -757,7 +758,7 @@ def page_dashboard():
         st.markdown("</div>", unsafe_allow_html=True)
     with c2:
         st.markdown('<div class="panel"><div class="panel-title">Kehadiran per Semester</div>', unsafe_allow_html=True)
-        bulan = db.hadir_per_bulan()
+        bulan = db.hadir_per_bulan(_user)
         if bulan:
             dfb = pd.DataFrame(bulan)
             st.bar_chart(dfb.set_index("bulan"), color=["#10b981", "#ef4444", "#f59e0b", "#94a3b8"])
@@ -766,7 +767,7 @@ def page_dashboard():
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="panel"><div class="panel-title">Tugas yang Sudah Diserahkan</div>', unsafe_allow_html=True)
-    done = db.tugas_list(status="Diserahkan")
+    done = db.tugas_list(_user, status="Diserahkan")
     if done:
         tabel_html(
             pd.DataFrame(done)[["matakuliah", "tipe", "judul", "deadline", "tanggal_selesai", "nilai"]].rename(
@@ -786,7 +787,7 @@ def page_dashboard():
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="panel"><div class="panel-title">Tugas yang Belum Diserahkan / Tidak Diserahkan</div>', unsafe_allow_html=True)
-    belum = [t for t in db.tugas_list() if t["status"] != "Diserahkan"]
+    belum = [t for t in db.tugas_list(_user) if t["status"] != "Diserahkan"]
     jml_terlambat = sum(1 for t in belum if t["status_tampil"] == "Terlambat")
     if belum:
         dfu = pd.DataFrame(belum)[["matakuliah", "tipe", "judul", "deadline", "status_tampil"]].rename(
@@ -841,12 +842,14 @@ def page_jadwal():
                 st.error("Jam selesai harus setelah jam masuk.")
             else:
                 mid = db.add_matakuliah(
+                    _user,
                     kode.strip(), nama.strip(), dosen.strip(), int(sks), jm, js,
                 )
                 if mid is None:
                     st.error(f"Matakuliah dengan kode '{kode}' sudah ada.")
                 else:
                     db.add_jadwal(
+                        _user,
                         mid, hari, jm, js, ruang.strip(),
                     )
                     st.session_state["flash"] = f"Matakuliah '{nama}' + jadwal ditambahkan."
@@ -855,10 +858,10 @@ def page_jadwal():
                     sync.push()
                     st.rerun()
 
-    mk_list = db.matakuliah_list()
+    mk_list = db.matakuliah_list(_user)
 
-    st.markdown(f'<div class="panel"><div class="panel-title">Daftar Jadwal ({len(db.jadwal_list())})</div>', unsafe_allow_html=True)
-    jdwl = db.jadwal_list()
+    st.markdown(f'<div class="panel"><div class="panel-title">Daftar Jadwal ({len(db.jadwal_list(_user))})</div>', unsafe_allow_html=True)
+    jdwl = db.jadwal_list(_user)
     if jdwl:
         df = pd.DataFrame(jdwl)[["matakuliah", "hari", "jam_mulai", "jam_selesai", "ruang", "dosen"]].rename(
             columns={
@@ -872,7 +875,7 @@ def page_jadwal():
             jid = jdwl[pos]["id"]
             if _is_admin:
                 if st.button("Hapus Jadwal", width="stretch"):
-                    hapus_dialog(f"jadwal {sel['Matakuliah']} {sel['Hari']} {sel['Mulai']}", lambda: db.delete_jadwal(jid))
+                    hapus_dialog(f"jadwal {sel['Matakuliah']} {sel['Hari']} {sel['Mulai']}", lambda: db.delete_jadwal(_user, jid))
             else:
                 st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
@@ -895,7 +898,7 @@ def page_jadwal():
             st.caption("Menghapus matakuliah ikut menghapus jadwal, absen, dan tugasnya.")
             if _is_admin:
                 if st.button("Hapus Matakuliah", width="stretch"):
-                    hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(mid_sel))
+                    hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(_user, mid_sel))
             else:
                 st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
@@ -909,7 +912,7 @@ def page_absen():
     page_header(*PAGE_TITLES["Absen"])
     flash()
 
-    mk_list = db.matakuliah_list()
+    mk_list = db.matakuliah_list(_user)
     if not mk_list:
         st.info("Tambahkan matakuliah dulu di menu Jadwal Kuliah.")
         return
@@ -927,11 +930,11 @@ def page_absen():
         f'<div class="absen-hari">Hari: <b>{hari_nama}</b> · {tgl_hari.isoformat()}</div>',
         unsafe_allow_html=True,
     )
-    jdwl = db.jadwal_list(hari=hari_nama)
+    jdwl = db.jadwal_list(_user, hari=hari_nama)
     if not jdwl:
         st.info(f"Tidak ada jadwal kuliah hari {hari_nama}.")
     else:
-        catat = {a["id_matakuliah"]: a for a in db.absensi_by_tanggal(tgl_hari.isoformat())}
+        catat = {a["id_matakuliah"]: a for a in db.absensi_by_tanggal(_user, tgl_hari.isoformat())}
         for j in jdwl:
             sub = j["kode"] or "-"
             if j["ruang"]:
@@ -976,7 +979,7 @@ def page_absen():
                     kunci = f"ck_{j['id_matakuliah']}_{stt}_{tgl_hari.isoformat()}"
                     dis = ada is not None and ada["status"] == stt
                     if kol.button(stt, width="stretch", key=kunci, disabled=dis):
-                        db.set_absensi(j["id_matakuliah"], tgl_hari.isoformat(), stt)
+                        db.set_absensi(_user, j["id_matakuliah"], tgl_hari.isoformat(), stt)
                         st.session_state["flash"] = f"{j['matakuliah']} · {hari_nama} → {stt} ✔"
                         sync.push()
                         st.rerun()
@@ -1016,7 +1019,7 @@ def page_absen():
         catatan = st.text_input("Catatan (opsional)", key=f"absen_cat_{ab_ver}")
         st.markdown(f"**Hari: {db.HARI[tgl_hari_ini.weekday()]}**")
         jdwl_mk = [
-            j for j in db.jadwal_list(hari=db.HARI[tgl_hari_ini.weekday()])
+            j for j in db.jadwal_list(_user, hari=db.HARI[tgl_hari_ini.weekday()])
             if j["id_matakuliah"] == m["id"]
         ]
         win_mk = [_window_absen(j) for j in jdwl_mk]
@@ -1034,7 +1037,7 @@ def page_absen():
             st.warning(f"Window absen {m['nama']} hari ini sedang tidak terbuka. {rincian}")
         if st.button("Simpan", type="primary", width="stretch", disabled=not boleh):
             ok = db.add_absensi(
-                m["id"], tanggal.isoformat(), status, catatan.strip()
+                _user, m["id"], tanggal.isoformat(), status, catatan.strip()
             )
             if not ok:
                 st.error(f"Absen untuk {tanggal.isoformat()} sudah tercatat.")
@@ -1044,7 +1047,7 @@ def page_absen():
                 sync.push()
                 st.rerun()
 
-    rows = db.absensi_list(id_matakuliah=m["id"])
+    rows = db.absensi_list(_user, id_matakuliah=m["id"])
     st.markdown(f'<div class="panel"><div class="panel-title">Riwayat Absen ({len(rows)})</div>', unsafe_allow_html=True)
     if rows:
         df = pd.DataFrame(rows)[["tanggal", "status", "catatan"]].rename(
@@ -1055,7 +1058,7 @@ def page_absen():
             aid = rows[pos]["id"]
             if _is_admin:
                 if st.button("Hapus Absen", width="stretch"):
-                    hapus_dialog(f"absen {sel['Tanggal']} ({sel['Status']})", lambda: db.delete_absensi(aid))
+                    hapus_dialog(f"absen {sel['Tanggal']} ({sel['Status']})", lambda: db.delete_absensi(_user, aid))
             else:
                 st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
@@ -1063,7 +1066,7 @@ def page_absen():
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="panel"><div class="panel-title">Rekap Semua Matakuliah</div>', unsafe_allow_html=True)
-    all_mk = db.matakuliah_list()
+    all_mk = db.matakuliah_list(_user)
     if all_mk:
         dfr = pd.DataFrame(all_mk)
         dfr["kehadiran"] = dfr.apply(
@@ -1086,7 +1089,7 @@ def page_absen():
 # ---------- Tugas (Harian & UTS/UAS) ----------
 
 @st.dialog("Ubah Tugas")
-def edit_tugas(t, tid):
+def edit_tugas(t, tid, user):
     with st.form("edit_tugas"):
         judul = st.text_input("Judul", value=t["judul"])
         deskripsi = st.text_area("Deskripsi", value=t["deskripsi"])
@@ -1110,7 +1113,7 @@ def edit_tugas(t, tid):
             st.error("Pukul wajib diisi.")
         else:
             db.update_tugas(
-                tid, judul=judul.strip(), deskripsi=deskripsi.strip(),
+                user, tid, judul=judul.strip(), deskripsi=deskripsi.strip(),
                 deadline=datetime.combine(deadline, datetime.strptime(jam_dl, "%H:%M").time()).strftime("%Y-%m-%d %H:%M"),
                 status=status,
                 tanggal_selesai=date.today().isoformat(),
@@ -1130,7 +1133,7 @@ def page_tugas(tipe_filter):
     )
     flash()
 
-    mk_list = db.matakuliah_list()
+    mk_list = db.matakuliah_list(_user)
     if not mk_list:
         st.info("Tambahkan matakuliah dulu di menu Jadwal Kuliah.")
         return
@@ -1166,7 +1169,7 @@ def page_tugas(tipe_filter):
             else:
                 mid = mk_list[mk.index(mk)]["id"]
                 db.add_tugas(
-                    mid, tipe, judul.strip(), deskripsi.strip(),
+                    _user, mid, tipe, judul.strip(), deskripsi.strip(),
                     datetime.combine(deadline, datetime.strptime(jam_dl, "%H:%M").time()).strftime("%Y-%m-%d %H:%M"),
                     status,
                     nilai if nilai else None,
@@ -1182,7 +1185,7 @@ def page_tugas(tipe_filter):
         key="filt_tugas", label_visibility="collapsed",
     )
 
-    rows = db.tugas_list(tipe=tipe_filter)
+    rows = db.tugas_list(_user, tipe=tipe_filter)
     if is_ujian:
         rows = [r for r in rows if r["tipe"] in ("UTS", "UAS")]
     diserahkan = sum(1 for t in rows if t["status"] == "Diserahkan")
@@ -1214,20 +1217,50 @@ def page_tugas(tipe_filter):
             t = rows_tampil[pos]
             c1, c2, c3 = st.columns(3)
             if c1.button("Tandai Diserahkan", type="primary", width="stretch", disabled=t["status"] == "Diserahkan"):
-                db.update_tugas(tid, status="Diserahkan", tanggal_selesai=date.today().isoformat())
+                db.update_tugas(_user, tid, status="Diserahkan", tanggal_selesai=date.today().isoformat())
                 st.session_state["flash"] = f"'{t['judul']}' ditandai diserahkan."
                 sync.push()
                 st.rerun()
             if c2.button("Ubah", width="stretch"):
-                edit_tugas(t, tid)
+                edit_tugas(t, tid, _user)
             if _is_admin:
                 if c3.button("Hapus", width="stretch"):
-                    hapus_dialog(t["judul"], lambda: db.delete_tugas(tid))
+                    hapus_dialog(t["judul"], lambda: db.delete_tugas(_user, tid))
             else:
                 c3.caption("🔒 Hapus hanya Admin")
     else:
         st.info("Belum ada tugas.")
     st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ---------- Kelola Akun (khusus admin) ----------
+
+def page_kelola():
+    page_header(*PAGE_TITLES["Kelola Akun"])
+    flash()
+
+    rows = db.akun_list()
+    if not rows:
+        st.info("Belum ada akun user terdaftar.")
+        return
+
+    st.markdown(f'<div class="panel"><div class="panel-title">Akun Terdaftar ({len(rows)})</div>', unsafe_allow_html=True)
+    df = pd.DataFrame(rows).rename(
+        columns={
+            "username": "Nama", "nim": "NIM",
+            "jml_matakuliah": "Matakuliah", "jml_jadwal": "Jadwal",
+            "jml_absen": "Absen", "jml_tugas": "Tugas",
+        }
+    )
+    df["NIM"] = df["NIM"].astype(str)
+    sel, pos = select_table(df, "tbl_akun", height=320)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if sel:
+        target = rows[pos]["username"]
+        st.caption(f"Akun **{target}** — pilih akun di sidebar untuk melihat datanya (Jadwal/Absen/Tugas).")
+        if st.button("Hapus Akun", type="secondary", width="stretch"):
+            hapus_dialog(f"akun '{target}' beserta seluruh datanya", lambda: db.delete_akun(target))
 
 
 # ---------- Login ----------
@@ -1367,7 +1400,19 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-page = st.sidebar.radio("Menu", list(PAGE_TITLES), label_visibility="collapsed")
+# Data yang sedang dilihat: akun sendiri (user) atau akun pilihan (admin)
+if _is_admin:
+    _daftar_akun = [a["username"] for a in db.akun_list()]
+    if not _daftar_akun:
+        _user = ""
+        st.sidebar.info("Belum ada akun user terdaftar.")
+    else:
+        _user = st.sidebar.selectbox("Lihat data akun", _daftar_akun, key="adm_view_user")
+else:
+    _user = _nama
+
+_menu = PAGE_TITLES if _is_admin else {k: v for k, v in PAGE_TITLES.items() if k != "Kelola Akun"}
+page = st.sidebar.radio("Menu", list(_menu), label_visibility="collapsed")
 
 if st.sidebar.button("Keluar", width="stretch"):
     st.session_state["logged_in"] = False
@@ -1391,6 +1436,8 @@ elif page == "Tugas Harian":
     page_tugas("Harian")
 elif page == "UTS & UAS":
     page_tugas(None)
+elif page == "Kelola Akun":
+    page_kelola()
 
 st.sidebar.markdown(
     '<div class="sidebar-foot">Aplikasi pribadi — data tersimpan otomatis.</div>',

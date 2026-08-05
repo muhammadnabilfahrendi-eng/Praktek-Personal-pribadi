@@ -23,13 +23,34 @@ def _empty():
     return {"matakuliah": [], "jadwal": [], "absensi": [], "tugas": []}
 
 
+def _key(user):
+    return (user or "").strip().lower()
+
+
+# ---------- Penyimpanan (data per akun) ----------
+
 def load_data():
+    """Seluruh penyimpanan: {"users": {username: data}}. Format lama dimigrasi otomatis."""
     if DATA_FILE.exists():
         try:
-            return json.loads(DATA_FILE.read_text(encoding="utf-8"))
+            d = json.loads(DATA_FILE.read_text(encoding="utf-8"))
         except Exception:
-            pass
-    return _empty()
+            d = None
+        else:
+            if isinstance(d, dict) and "users" in d:
+                return d
+            if isinstance(d, dict):
+                # Migrasi format lama (satu data bersama) -> data milik akun pertama
+                lst = _login_all()
+                owner = lst[0]["username"] if lst else None
+                baru = {"users": {}}
+                if owner:
+                    baru["users"][_key(owner)] = d
+                else:
+                    baru["_pending"] = d
+                save_data(baru)
+                return baru
+    return {"users": {}}
 
 
 def save_data(data):
@@ -37,6 +58,17 @@ def save_data(data):
     DATA_FILE.write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+
+
+def data_user(user):
+    """Data milik satu akun (salinan; belum ditulis ke file)."""
+    return load_data()["users"].get(_key(user), _empty())
+
+
+def save_user(user, data):
+    all_d = load_data()
+    all_d["users"][_key(user)] = data
+    save_data(all_d)
 
 
 def _next_id(items):
@@ -148,6 +180,13 @@ def create_login(username, nim, password):
         }
     )
     _save_login_all(akun)
+    if len(akun) == 1:
+        # Akun pertama: klaim data lama yang belum punya pemilik
+        all_d = load_data()
+        pend = all_d.pop("_pending", None)
+        if pend:
+            all_d["users"][_key(uname)] = pend
+            save_data(all_d)
     return "ok"
 
 
@@ -169,17 +208,44 @@ def is_admin(username):
     )
 
 
+def akun_list():
+    """Semua akun user + statistik datanya (untuk halaman Kelola Akun)."""
+    rows = []
+    for a in _login_all():
+        d = data_user(a["username"])
+        rows.append(
+            {
+                "username": a["username"],
+                "nim": a.get("nim", ""),
+                "jml_matakuliah": len(d["matakuliah"]),
+                "jml_jadwal": len(d["jadwal"]),
+                "jml_absen": len(d["absensi"]),
+                "jml_tugas": len(d["tugas"]),
+            }
+        )
+    return rows
+
+
+def delete_akun(username):
+    """Hapus akun user beserta seluruh datanya."""
+    akun = [a for a in _login_all() if _key(a["username"]) != _key(username)]
+    _save_login_all(akun)
+    all_d = load_data()
+    all_d["users"].pop(_key(username), None)
+    save_data(all_d)
+
+
 # ---------- Matakuliah ----------
 
-def get_matakuliah(mid):
-    for m in load_data()["matakuliah"]:
+def get_matakuliah(user, mid):
+    for m in data_user(user)["matakuliah"]:
         if m["id"] == mid:
             return m
     return None
 
 
-def add_matakuliah(kode, nama, dosen, sks, jam_masuk="", jam_selesai=""):
-    data = load_data()
+def add_matakuliah(user, kode, nama, dosen, sks, jam_masuk="", jam_selesai=""):
+    data = data_user(user)
     for m in data["matakuliah"]:
         if kode and m.get("kode") and m["kode"].lower() == kode.lower():
             return None
@@ -193,29 +259,29 @@ def add_matakuliah(kode, nama, dosen, sks, jam_masuk="", jam_selesai=""):
         "jam_selesai": jam_selesai,
     }
     data["matakuliah"].append(m)
-    save_data(data)
+    save_user(user, data)
     return m["id"]
 
 
-def update_matakuliah(mid, kode, nama, dosen, sks):
-    data = load_data()
+def update_matakuliah(user, mid, kode, nama, dosen, sks):
+    data = data_user(user)
     for m in data["matakuliah"]:
         if m["id"] == mid:
             m.update(kode=kode, nama=nama, dosen=dosen, sks=int(sks))
-    save_data(data)
+    save_user(user, data)
 
 
-def delete_matakuliah(mid):
-    data = load_data()
+def delete_matakuliah(user, mid):
+    data = data_user(user)
     data["matakuliah"] = [m for m in data["matakuliah"] if m["id"] != mid]
     data["jadwal"] = [j for j in data["jadwal"] if j["id_matakuliah"] != mid]
     data["absensi"] = [a for a in data["absensi"] if a["id_matakuliah"] != mid]
     data["tugas"] = [t for t in data["tugas"] if t["id_matakuliah"] != mid]
-    save_data(data)
+    save_user(user, data)
 
 
-def matakuliah_list():
-    data = load_data()
+def matakuliah_list(user):
+    data = data_user(user)
     rows = []
     for m in data["matakuliah"]:
         absen = [a for a in data["absensi"] if a["id_matakuliah"] == m["id"]]
@@ -242,8 +308,8 @@ def matakuliah_list():
 
 # ---------- Jadwal ----------
 
-def add_jadwal(id_matakuliah, hari, jam_mulai, jam_selesai, ruang):
-    data = load_data()
+def add_jadwal(user, id_matakuliah, hari, jam_mulai, jam_selesai, ruang):
+    data = data_user(user)
     j = {
         "id": _next_id(data["jadwal"]),
         "id_matakuliah": id_matakuliah,
@@ -253,17 +319,17 @@ def add_jadwal(id_matakuliah, hari, jam_mulai, jam_selesai, ruang):
         "ruang": ruang,
     }
     data["jadwal"].append(j)
-    save_data(data)
+    save_user(user, data)
 
 
-def delete_jadwal(jid):
-    data = load_data()
+def delete_jadwal(user, jid):
+    data = data_user(user)
     data["jadwal"] = [j for j in data["jadwal"] if j["id"] != jid]
-    save_data(data)
+    save_user(user, data)
 
 
-def jadwal_list(hari=None):
-    data = load_data()
+def jadwal_list(user, hari=None):
+    data = data_user(user)
     mhs = {m["id"]: m for m in data["matakuliah"]}
     rows = []
     for j in data["jadwal"]:
@@ -296,8 +362,8 @@ def jadwal_list(hari=None):
 
 # ---------- Absensi ----------
 
-def add_absensi(id_matakuliah, tanggal, status, catatan):
-    data = load_data()
+def add_absensi(user, id_matakuliah, tanggal, status, catatan):
+    data = data_user(user)
     for a in data["absensi"]:
         if a["id_matakuliah"] == id_matakuliah and a["tanggal"] == tanggal:
             return False
@@ -309,19 +375,19 @@ def add_absensi(id_matakuliah, tanggal, status, catatan):
         "catatan": catatan or "",
     }
     data["absensi"].append(a)
-    save_data(data)
+    save_user(user, data)
     return True
 
 
-def set_absensi(id_matakuliah, tanggal, status, catatan=""):
+def set_absensi(user, id_matakuliah, tanggal, status, catatan=""):
     """Tambah absen, atau ganti status jika absen sudah ada (untuk tanggal yang sama)."""
-    data = load_data()
+    data = data_user(user)
     for a in data["absensi"]:
         if a["id_matakuliah"] == id_matakuliah and a["tanggal"] == tanggal:
             a["status"] = status
             if catatan:
                 a["catatan"] = catatan
-            save_data(data)
+            save_user(user, data)
             return True
     a = {
         "id": _next_id(data["absensi"]),
@@ -331,18 +397,18 @@ def set_absensi(id_matakuliah, tanggal, status, catatan=""):
         "catatan": catatan or "",
     }
     data["absensi"].append(a)
-    save_data(data)
+    save_user(user, data)
     return True
 
 
-def delete_absensi(aid):
-    data = load_data()
+def delete_absensi(user, aid):
+    data = data_user(user)
     data["absensi"] = [a for a in data["absensi"] if a["id"] != aid]
-    save_data(data)
+    save_user(user, data)
 
 
-def absensi_by_tanggal(tanggal):
-    data = load_data()
+def absensi_by_tanggal(user, tanggal):
+    data = data_user(user)
     return [
         {
             "id": a["id"],
@@ -356,8 +422,8 @@ def absensi_by_tanggal(tanggal):
     ]
 
 
-def absensi_list(id_matakuliah=None):
-    data = load_data()
+def absensi_list(user, id_matakuliah=None):
+    data = data_user(user)
     mhs = {m["id"]: m["nama"] for m in data["matakuliah"]}
     rows = [
         {
@@ -376,8 +442,8 @@ def absensi_list(id_matakuliah=None):
 
 # ---------- Tugas ----------
 
-def add_tugas(id_matakuliah, tipe, judul, deskripsi, deadline, status, nilai):
-    data = load_data()
+def add_tugas(user, id_matakuliah, tipe, judul, deskripsi, deadline, status, nilai):
+    data = data_user(user)
     t = {
         "id": _next_id(data["tugas"]),
         "id_matakuliah": id_matakuliah,
@@ -390,13 +456,13 @@ def add_tugas(id_matakuliah, tipe, judul, deskripsi, deadline, status, nilai):
         "nilai": nilai,
     }
     data["tugas"].append(t)
-    save_data(data)
+    save_user(user, data)
     return t["id"]
 
 
-def update_tugas(tid, judul=None, deskripsi=None, deadline=None,
+def update_tugas(user, tid, judul=None, deskripsi=None, deadline=None,
                  status=None, tanggal_selesai=None, nilai=None):
-    data = load_data()
+    data = data_user(user)
     for t in data["tugas"]:
         if t["id"] == tid:
             if judul is not None:
@@ -413,13 +479,13 @@ def update_tugas(tid, judul=None, deskripsi=None, deadline=None,
                     t["tanggal_selesai"] = ""
             if nilai is not None:
                 t["nilai"] = nilai
-    save_data(data)
+    save_user(user, data)
 
 
-def delete_tugas(tid):
-    data = load_data()
+def delete_tugas(user, tid):
+    data = data_user(user)
     data["tugas"] = [t for t in data["tugas"] if t["id"] != tid]
-    save_data(data)
+    save_user(user, data)
 
 
 def _status_tampil(t):
@@ -436,8 +502,8 @@ def _status_tampil(t):
     return "Belum"
 
 
-def tugas_list(tipe=None, status=None, id_matakuliah=None):
-    data = load_data()
+def tugas_list(user, tipe=None, status=None, id_matakuliah=None):
+    data = data_user(user)
     mhs = {m["id"]: m["nama"] for m in data["matakuliah"]}
     rows = []
     for t in data["tugas"]:
@@ -467,8 +533,8 @@ def tugas_list(tipe=None, status=None, id_matakuliah=None):
 
 # ---------- Rekap ----------
 
-def rekap_keseluruhan():
-    data = load_data()
+def rekap_keseluruhan(user):
+    data = data_user(user)
     absen = data["absensi"]
     tugas = data["tugas"]
     return {
@@ -489,8 +555,8 @@ def rekap_keseluruhan():
     }
 
 
-def hadir_per_bulan():
-    data = load_data()
+def hadir_per_bulan(user):
+    data = data_user(user)
     bulan = {}
     for a in data["absensi"]:
         key = a["tanggal"][:7]
