@@ -512,7 +512,8 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
     border: 1px solid rgba(96,165,250,.35);
     background: linear-gradient(120deg, rgba(59,130,246,.16), rgba(6,182,212,.12));
     text-align: center;
-    margin: 4px 0 16px 0;
+    max-width: 420px;
+    margin: 0 auto 16px auto;
 }
 .clock-tgl {
     font-size: .95rem;
@@ -716,6 +717,7 @@ def hapus_dialog(label, aksi):
 # ---------- Dashboard ----------
 
 def page_dashboard():
+    components.html(_clock_html(), height=110)
     st.markdown(
         f'<div class="welcome-card">'
         f'<div class="welcome-title">Welcome back, {html.escape(st.session_state.get("username", ""))}!</div>'
@@ -725,7 +727,6 @@ def page_dashboard():
     )
     page_header(*PAGE_TITLES["Dashboard"])
     flash()
-    components.html(_clock_html(), height=110)
     r = db.rekap_keseluruhan()
     pct = round(r["jml_hadir"] / r["jml_pertemuan"] * 100) if r["jml_pertemuan"] else 0
     stat_cards(
