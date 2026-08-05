@@ -202,8 +202,9 @@ def login_exists():
     return LOGIN_FILE.exists()
 
 
-def create_login(username, nim, password, pertanyaan="", jawaban=""):
-    """Daftar akun user baru (NIM + password terpisah). Kembalikan 'ok' atau pesan kesalahan."""
+def create_login(username, nim, password="", pertanyaan="", jawaban=""):
+    """Daftar akun user baru (login pakai nama, password default = NIM).
+    Kembalikan 'ok' atau pesan kesalahan."""
     akun = _login_all()
     uname = username.strip()
     unim = nim.strip()
@@ -218,7 +219,7 @@ def create_login(username, nim, password, pertanyaan="", jawaban=""):
         {
             "username": uname,
             "nim": unim,
-            "pass_hash": _hash_pw(password),
+            "pass_hash": _hash_pw(password or unim),
             "pertanyaan": pertanyaan.strip(),
             "jawaban_hash": _hash_pw(jawaban),
         }
@@ -234,22 +235,31 @@ def create_login(username, nim, password, pertanyaan="", jawaban=""):
     return "ok"
 
 
-def get_pertanyaan(nim):
-    """Pertanyaan keamanan akun user, atau None jika tidak ada akun/pertanyaan."""
+def _cari_akun(ident):
+    """Cari akun berdasarkan nama (case-insensitive) atau NIM."""
+    key = (ident or "").strip()
     for a in _login_all():
-        if a.get("nim", "").strip() == nim.strip():
-            return a.get("pertanyaan") or None
+        if a.get("username", "").strip().lower() == key.lower() or a.get("nim", "").strip() == key:
+            return a
     return None
 
 
-def reset_password(nim, jawaban, password_baru):
-    """Reset password setelah jawaban keamanan benar (NIM tidak berubah)."""
+def get_pertanyaan(ident):
+    """Pertanyaan keamanan akun user (ditemukan via nama atau NIM), atau None."""
+    a = _cari_akun(ident)
+    return (a or {}).get("pertanyaan") or None
+
+
+def reset_password(ident, jawaban, password_baru):
+    """Reset password setelah jawaban keamanan benar (ident = nama atau NIM)."""
     akun = _login_all()
-    target = None
-    for a in akun:
-        if a.get("nim", "").strip() == nim.strip():
-            target = a
-            break
+    key = (ident or "").strip()
+    target = next(
+        (a for a in akun
+         if a.get("username", "").strip().lower() == key.lower()
+         or a.get("nim", "").strip() == key),
+        None,
+    )
     if not target:
         return "Akun tidak ditemukan"
     if not target.get("pertanyaan"):
@@ -261,14 +271,17 @@ def reset_password(nim, jawaban, password_baru):
     return "ok"
 
 
-def check_login(nim, password):
-    """Kembalikan dict akun user jika NIM + password cocok, selain itu None."""
-    for a in _login_all():
-        if (
-            a.get("nim", "").strip() == nim.strip()
-            and a.get("pass_hash") == _hash_pw(password)
-        ):
-            return a
+def check_login(ident, password):
+    """Kembalikan dict akun user jika login cocok.
+    Ident bisa nama lengkap (case-insensitive) atau NIM. Password diterima jika
+    sama dengan NIM akun atau sama dengan password yang disimpan (hasil reset)."""
+    akun = _cari_akun(ident)
+    if not akun:
+        return None
+    if str(password).strip() == str(akun.get("nim", "")).strip():
+        return akun
+    if akun.get("pass_hash") == _hash_pw(password):
+        return akun
     return None
 
 
