@@ -901,14 +901,8 @@ def page_absen():
             else:
                 badge = '<span class="tbl-badge" style="color:#ef4444">Terlewat</span>'
             c1, c2, c3 = st.columns([1.2, 2.9, 1.5])
-            c1.markdown(f"**{j['jam_mulai'] or '-'}**")
-            c2.markdown(
-                f"**{j['matakuliah']}**<br><small class='absen-sub'>{sub}</small>",
-                unsafe_allow_html=True,
-            )
-            with c3:
-                st.markdown(badge, unsafe_allow_html=True)
-                uid_t = f"tm_{j['id_matakuliah']}_{win}_{tgl_hari.isoformat()}"
+            uid_t = f"tm_{j['id_matakuliah']}_{win}_{tgl_hari.isoformat()}"
+            with c1:
                 if win == "belum" and buka_ep:
                     components.html(
                         _timer_html(uid_t, buka_ep, "Buka dalam", "Sudah buka"),
@@ -919,6 +913,13 @@ def page_absen():
                         _timer_html(uid_t, tutup_ep, "Ditutup dalam", "Absensi ditutup"),
                         height=30,
                     )
+                st.markdown(f"**{j['jam_mulai'] or '-'}**")
+            c2.markdown(
+                f"**{j['matakuliah']}**<br><small class='absen-sub'>{sub}</small>",
+                unsafe_allow_html=True,
+            )
+            with c3:
+                st.markdown(badge, unsafe_allow_html=True)
             if win == "aktif":
                 kb = st.columns(4)
                 for stt, kol in zip(db.STATUS_ABSEN, kb):
