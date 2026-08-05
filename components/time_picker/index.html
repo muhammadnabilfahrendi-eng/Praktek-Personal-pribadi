@@ -6,7 +6,6 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: "Source Sans", "Segoe UI", sans-serif;
-    color: #fafafa;
     background: transparent;
     user-select: none;
   }
@@ -22,36 +21,32 @@
   .tp-field {
     display: flex;
     align-items: center;
-    gap: 2px;
     height: 40px;
     padding: 0 8px 0 12px;
     border: 1px solid rgba(165, 200, 255, 0.22);
     border-radius: 14px;
     background: linear-gradient(rgba(148, 184, 255, 0.2), rgba(59, 130, 246, 0.12));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09);
-    cursor: text;
+  }
+  .tp-field input {
+    width: 2.2ch;
+    border: none;
+    background: transparent;
     outline: none;
-  }
-  .tp-seg {
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 19.6px;
-    letter-spacing: .5px;
-    font-variant-numeric: tabular-nums;
     color: #fafafa;
-    padding: 4px 7px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background .12s ease;
-  }
-  .tp-seg:hover { background: rgba(148, 184, 255, 0.18); }
-  .tp-seg.sel {
-    background: rgba(59, 130, 246, 0.32);
-    color: #ffffff;
-  }
-  .tp-colon {
     font-size: 14px;
+    line-height: 19.6px;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    caret-color: #60a5fa;
+    padding: 0;
+  }
+  .tp-field input::selection { background: rgba(59, 130, 246, 0.4); }
+  .tp-colon {
     color: rgba(226, 232, 240, 0.65);
+    font-size: 14px;
+    padding: 0 1px;
   }
   .tp-steps {
     display: flex;
@@ -78,10 +73,10 @@
 </head>
 <body>
 <div class="tp-label" id="lbl"></div>
-<div class="tp-field" id="field" tabindex="0">
-  <span class="tp-seg" id="hh" data-part="hh">08</span>
+<div class="tp-field">
+  <input id="h" type="text" inputmode="numeric" maxlength="2" aria-label="Jam" value="08">
   <span class="tp-colon">:</span>
-  <span class="tp-seg" id="mm" data-part="mm">00</span>
+  <input id="m" type="text" inputmode="numeric" maxlength="2" aria-label="Menit" value="00">
   <div class="tp-steps">
     <button id="up" type="button" aria-label="Naik">▲</button>
     <button id="dn" type="button" aria-label="Turun">▼</button>
@@ -89,101 +84,89 @@
 </div>
 <script src="component-lib.js"></script>
 <script>
-  const field = document.getElementById('field');
-  const segH = document.getElementById('hh');
-  const segM = document.getElementById('mm');
+  const hIn = document.getElementById('h');
+  const mIn = document.getElementById('m');
   const btnUp = document.getElementById('up');
   const btnDn = document.getElementById('dn');
   const lbl = document.getElementById('lbl');
 
   const pad = n => String(n).padStart(2, '0');
 
-  const st = {
-    hh: 8,
-    mm: 0,
-    active: null,
-    buf: ''
-  };
+  const st = { hh: 8, mm: 0 };
 
   function send() {
     Streamlit.setComponentValue(pad(st.hh) + ':' + pad(st.mm));
   }
 
-  function render() {
-    segH.textContent = st.active === 'hh' && st.buf ? st.buf : pad(st.hh);
-    segM.textContent = st.active === 'mm' && st.buf ? st.buf : pad(st.mm);
-    segH.classList.toggle('sel', st.active === 'hh');
-    segM.classList.toggle('sel', st.active === 'mm');
+  function commit() {
+    st.hh = parseInt(hIn.value, 10) || 0;
+    st.mm = parseInt(mIn.value, 10) || 0;
+    hIn.value = pad(st.hh);
+    mIn.value = pad(st.mm);
+    send();
   }
 
   function inc(part, dir) {
     const max = part === 'hh' ? 23 : 59;
     st[part] = (st[part] + dir + max + 1) % (max + 1);
-    st.buf = '';
+    if (part === 'hh') hIn.value = pad(st.hh); else mIn.value = pad(st.mm);
     send();
-    render();
   }
 
-  function setActive(part) {
-    st.active = part;
-    st.buf = '';
-    render();
-    field.focus();
-  }
+  const activePart = () => document.activeElement === hIn ? 'hh' : 'mm';
 
-  segH.addEventListener('click', () => setActive('hh'));
-  segM.addEventListener('click', () => setActive('mm'));
-  btnUp.addEventListener('click', () => inc(st.active || 'hh', 1));
-  btnDn.addEventListener('click', () => inc(st.active || 'mm', -1));
-
-  field.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    inc(st.active || 'hh', e.deltaY < 0 ? 1 : -1);
-  }, { passive: false });
-
-  field.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      inc(st.active || 'hh', e.key === 'ArrowUp' ? 1 : -1);
-    } else if (/^[0-9]$/.test(e.key)) {
-      e.preventDefault();
-      if (!st.active) st.active = 'hh';
-      st.buf += e.key;
-      if (st.buf.length >= 2) {
-        st[st.active] = parseInt(st.buf, 10);
-        st.buf = '';
-        send();
-      }
-      render();
-    } else if (e.key === 'Backspace') {
-      e.preventDefault();
-      if (st.buf) { st.buf = ''; render(); }
-      else if (st.active) { setActive(null); }
-    } else if (e.key === 'Enter' && st.buf) {
-      e.preventDefault();
-      st[st.active] = parseInt(st.buf, 10);
-      st.buf = '';
-      send();
-      render();
+  hIn.addEventListener('input', () => {
+    hIn.value = hIn.value.replace(/\D/g, '').slice(0, 2);
+    if (hIn.value.length === 2) {
+      st.hh = parseInt(hIn.value, 10);
+      mIn.focus();
+      mIn.select();
     }
   });
+
+  mIn.addEventListener('input', () => {
+    mIn.value = mIn.value.replace(/\D/g, '').slice(0, 2);
+    if (mIn.value.length === 2) {
+      commit();
+      mIn.select();
+    }
+  });
+
+  hIn.addEventListener('blur', commit);
+  mIn.addEventListener('blur', commit);
+
+  hIn.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp') { e.preventDefault(); inc('hh', 1); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); inc('hh', -1); }
+    else if (e.key === 'ArrowRight' && hIn.selectionStart === hIn.value.length) { mIn.focus(); mIn.select(); }
+  });
+  mIn.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp') { e.preventDefault(); inc('mm', 1); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); inc('mm', -1); }
+    else if (e.key === 'Backspace' && mIn.value === '') { e.preventDefault(); hIn.focus(); hIn.select(); }
+    else if (e.key === 'ArrowLeft' && mIn.selectionStart === 0) { e.preventDefault(); hIn.focus(); hIn.select(); }
+  });
+
+  btnUp.addEventListener('click', () => inc(activePart(), 1));
+  btnDn.addEventListener('click', () => inc(activePart(), -1));
+
+  document.querySelector('.tp-field').addEventListener('wheel', (e) => {
+    e.preventDefault();
+    inc(activePart(), e.deltaY < 0 ? 1 : -1);
+  }, { passive: false });
 
   function apply(args) {
     if (args.label) lbl.textContent = args.label;
     const m = /^(\d{1,2}):(\d{2})$/.exec(args.value || '');
     if (m) {
-      const nh = parseInt(m[1], 10) % 24;
-      const nm = parseInt(m[2], 10) % 60;
-      if (nh !== st.hh || nm !== st.mm) {
-        st.hh = nh;
-        st.mm = nm;
-        render();
-      }
+      st.hh = parseInt(m[1], 10) % 24;
+      st.mm = parseInt(m[2], 10) % 60;
+      hIn.value = pad(st.hh);
+      mIn.value = pad(st.mm);
     }
   }
 
   Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, (e) => apply(e.detail.args));
-  render();
   Streamlit.setComponentReady();
   Streamlit.setFrameHeight(document.body.scrollHeight + 8);
   window.addEventListener('resize', () => Streamlit.setFrameHeight(document.body.scrollHeight + 8));
