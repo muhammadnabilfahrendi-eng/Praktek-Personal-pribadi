@@ -20,7 +20,7 @@ _HURUF_HARI = {
 
 
 def _empty():
-    return {"matakuliah": [], "jadwal": [], "absensi": [], "tugas": []}
+    return {"matakuliah": [], "jadwal": [], "absensi": [], "tugas": [], "notifikasi": [], "absen_sesi": None}
 
 
 def _key(user):
@@ -471,6 +471,93 @@ def jadwal_list(user, hari=None):
     return rows
 
 
+# ---------- Notifikasi ----------
+
+def tambah_notifikasi(user, pesan, jenis="info", waktu=None):
+    """Tambahkan notifikasi untuk user (maks 50 tersimpan)."""
+    data = data_user(user)
+    notif = data.setdefault("notifikasi", [])
+    n = {
+        "id": _next_id(notif),
+        "pesan": pesan,
+        "jenis": jenis,
+        "tanggal": waktu or datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "dibaca": False,
+    }
+    notif.append(n)
+    if len(notif) > 50:
+        del notif[: len(notif) - 50]
+    save_user(user, data)
+    return n["id"]
+
+
+def notifikasi_list(user):
+    """Notifikasi user, terbaru di depan."""
+    return list(reversed(data_user(user).get("notifikasi", [])))
+
+
+def tandai_notifikasi_dibaca(user, nid=None):
+    """Tandai satu (nid) atau semua notifikasi dibaca."""
+    data = data_user(user)
+    for n in data.get("notifikasi", []):
+        if nid is None or n["id"] == nid:
+            n["dibaca"] = True
+    save_user(user, data)
+
+
+def notif_belum_dibaca(user):
+    return [n for n in notifikasi_list(user) if not n["dibaca"]]
+
+
+# ---------- Sesi absen (dibuka admin) ----------
+
+def buka_absen(user, id_matakuliah, batas=""):
+    """Admin membuka sesi absen untuk satu matakuliah user. batas: 'YYYY-MM-DD HH:MM'."""
+    data = data_user(user)
+    data["absen_sesi"] = {
+        "id_matakuliah": id_matakuliah,
+        "batas": batas,
+        "dibuka": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    save_user(user, data)
+
+
+def tutup_absen(user):
+    data = data_user(user)
+    data["absen_sesi"] = None
+    save_user(user, data)
+
+
+def absen_sesi_aktif(user, now_str):
+    """Sesi absen yang masih berlaku dan belum diabsen hari ini, atau None.
+    now_str: 'YYYY-MM-DD HH:MM'."""
+    data = data_user(user)
+    s = data.get("absen_sesi")
+    if not s:
+        return None
+    m = next((x for x in data["matakuliah"] if x["id"] == s.get("id_matakuliah")), None)
+    if not m:
+        return None
+    if s.get("batas"):
+        try:
+            batas = datetime.strptime(s["batas"], "%Y-%m-%d %H:%M")
+            now = datetime.strptime(now_str, "%Y-%m-%d %H:%M")
+            if now > batas:
+                return None
+        except ValueError:
+            pass
+    tgl = now_str[:10]
+    for a in data["absensi"]:
+        if a["id_matakuliah"] == s.get("id_matakuliah") and a["tanggal"] == tgl:
+            return None
+    return {
+        "id_matakuliah": s.get("id_matakuliah"),
+        "matakuliah": m["nama"],
+        "kode": m.get("kode", ""),
+        "batas": s.get("batas", ""),
+    }
+
+
 # ---------- Absensi ----------
 
 def add_absensi(user, id_matakuliah, tanggal, status, catatan):
@@ -508,6 +595,12 @@ def set_absensi(user, id_matakuliah, tanggal, status, catatan=""):
         "catatan": catatan or "",
     }
     data["absensi"].append(a)
+    # Notifikasi absen untuk matakuliah ini otomatis ditandai dibaca
+    m = next((x for x in data["matakuliah"] if x["id"] == id_matakuliah), None)
+    if m:
+        for n in data.get("notifikasi", []):
+            if n.get("jenis") == "absen" and m["nama"] in n.get("pesan", ""):
+                n["dibaca"] = True
     save_user(user, data)
     return True
 

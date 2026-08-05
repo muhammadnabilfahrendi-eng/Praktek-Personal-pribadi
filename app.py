@@ -716,6 +716,35 @@ def page_dashboard():
     )
     page_header(*PAGE_TITLES["Dashboard"])
     flash()
+
+    sesi = db.absen_sesi_aktif(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
+    if sesi:
+        info_batas = f" (batas {sesi['batas']})" if sesi["batas"] else ""
+        st.warning(
+            f"📢 Absensi **{sesi['matakuliah']}** dibuka oleh admin{info_batas} — "
+            "jangan sampai terlewat, absen sekarang!"
+        )
+        if st.button("Absen Sekarang", type="primary", width="stretch"):
+            db.set_absensi(_user, sesi["id_matakuliah"], _now_wib().date().isoformat(), "Hadir")
+            st.session_state["flash"] = f"Absen {sesi['matakuliah']} → Hadir ✔"
+            sync.push()
+            st.rerun()
+
+    notif_belum = db.notif_belum_dibaca(_user)
+    if notif_belum:
+        st.markdown(f'<div class="panel"><div class="panel-title">Notifikasi ({len(notif_belum)})</div>', unsafe_allow_html=True)
+        for n in notif_belum:
+            ikon = {"absen": "📢", "tugas": "📝", "info": "ℹ️"}.get(n["jenis"], "ℹ️")
+            st.markdown(
+                f'<div class="absen-rule">{ikon} <b>{html.escape(n["pesan"])}</b>'
+                f'<br><small>{html.escape(n["tanggal"])}</small></div>',
+                unsafe_allow_html=True,
+            )
+        if st.button("Tandai semua dibaca", width="stretch"):
+            db.tandai_notifikasi_dibaca(_user)
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
     r = db.rekap_keseluruhan(_user)
     pct = round(r["jml_hadir"] / r["jml_pertemuan"] * 100) if r["jml_pertemuan"] else 0
     stat_cards(
@@ -1021,6 +1050,43 @@ def page_absen():
                 )
     st.markdown("</div>", unsafe_allow_html=True)
 
+    if _is_admin:
+        st.markdown('<div class="panel"><div class="panel-title">Buka Absensi (Admin)</div>', unsafe_allow_html=True)
+        sesi = db.absen_sesi_aktif(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
+        if sesi:
+            st.caption(f"Sesi aktif: **{sesi['matakuliah']}**{' (batas ' + sesi['batas'] + ')' if sesi['batas'] else ''} — user sudah dapat notifikasi.")
+            if st.button("Tutup Absensi", width="stretch"):
+                db.tutup_absen(_user)
+                st.session_state["flash"] = f"Sesi absensi '{sesi['matakuliah']}' ditutup."
+                sync.push()
+                st.rerun()
+        else:
+            labels2 = [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_list]
+            lbl2 = st.selectbox("Matakuliah yang dibuka", labels2, key="adm_buka_mk")
+            m2 = mk_list[labels2.index(lbl2)]
+            c1, c2 = st.columns(2)
+            with c1:
+                batas_tgl = st.date_input("Batas absen (tanggal)", value=date.today())
+            with c2:
+                batas_jam = _time_picker_ui("Batas absen (jam)", "23:55", "adm_buka_jam")
+            if st.button("Buka Absensi", type="primary", width="stretch"):
+                if not batas_jam:
+                    st.error("Jam batas absen wajib diisi.")
+                else:
+                    batas = datetime.combine(
+                        batas_tgl, datetime.strptime(batas_jam, "%H:%M").time()
+                    ).strftime("%Y-%m-%d %H:%M")
+                    db.buka_absen(_user, m2["id"], batas)
+                    db.tambah_notifikasi(
+                        _user,
+                        f"Absensi '{m2['nama']}' dibuka oleh admin — segera absen sebelum {batas}.",
+                        "absen",
+                    )
+                    st.session_state["flash"] = f"Absensi '{m2['nama']}' dibuka untuk akun {_user}."
+                    sync.push()
+                    st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+
     labels = [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_list]
     lbl = st.selectbox("Pilih Matakuliah", labels)
     m = mk_list[labels.index(lbl)]
@@ -1150,6 +1216,12 @@ def edit_tugas(t, tid, user):
                 tanggal_selesai=date.today().isoformat(),
                 nilai=nilai if nilai else None,
             )
+            if _is_admin:
+                db.tambah_notifikasi(
+                    user,
+                    f"Tugas '{judul.strip()}' diperbarui oleh admin.",
+                    "tugas",
+                )
             st.session_state["flash"] = "Tugas diperbarui."
             sync.push()
             st.rerun()
@@ -1205,6 +1277,12 @@ def page_tugas(tipe_filter):
                     status,
                     nilai if nilai else None,
                 )
+                if _is_admin:
+                    db.tambah_notifikasi(
+                        _user,
+                        f"Tugas {tipe} '{judul.strip()}' ditambahkan oleh admin.",
+                        "tugas",
+                    )
                 st.session_state["flash"] = f"Tugas {tipe} '{judul}' ditambahkan."
                 st.session_state["_tgs_ver"] = tgs_ver + 1
                 sync.push()
