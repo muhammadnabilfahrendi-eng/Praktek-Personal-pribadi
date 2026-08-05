@@ -692,7 +692,7 @@ def hapus_dialog(label, aksi):
 # ---------- Dashboard ----------
 
 def page_dashboard():
-    components.html(_clock_html(), height=110)
+    components.html(_clock_html(), height=150)
     st.markdown(
         f'<div class="welcome-card">'
         f'<div class="welcome-title">Welcome back, {html.escape(st.session_state.get("username", ""))}!</div>'
