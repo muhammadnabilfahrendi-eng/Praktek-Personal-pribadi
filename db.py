@@ -168,7 +168,7 @@ def login_exists():
     return LOGIN_FILE.exists()
 
 
-def create_login(username, nim, password):
+def create_login(username, nim, password, pertanyaan="", jawaban=""):
     """Daftar akun user baru. Kembalikan 'ok' atau pesan kesalahan (Nama/NIM sudah terpakai)."""
     akun = _login_all()
     uname = username.strip()
@@ -185,6 +185,8 @@ def create_login(username, nim, password):
             "username": uname,
             "nim": unim,
             "pass_hash": _hash_pw(password),
+            "pertanyaan": pertanyaan.strip(),
+            "jawaban_hash": _hash_pw(jawaban),
         }
     )
     _save_login_all(akun)
@@ -195,6 +197,37 @@ def create_login(username, nim, password):
         if pend:
             all_d["users"][_key(uname)] = pend
             save_data(all_d)
+    return "ok"
+
+
+def get_pertanyaan(username):
+    """Pertanyaan keamanan akun user, atau None jika tidak ada akun/pertanyaan."""
+    for a in _login_all():
+        if a.get("username", "").strip().lower() == username.strip().lower():
+            return a.get("pertanyaan") or None
+    return None
+
+
+def reset_password(username, jawaban, nim_baru):
+    """Reset NIM (sekaligus password) setelah jawaban keamanan benar."""
+    akun = _login_all()
+    target = None
+    for a in akun:
+        if a.get("username", "").strip().lower() == username.strip().lower():
+            target = a
+            break
+    if not target:
+        return "Akun tidak ditemukan"
+    if not target.get("pertanyaan"):
+        return "Akun ini belum mengatur pertanyaan keamanan."
+    if target.get("jawaban_hash") != _hash_pw(jawaban):
+        return "Jawaban keamanan salah."
+    for a in akun:
+        if a is not target and a.get("nim", "").strip() == nim_baru.strip():
+            return "NIM sudah terdaftar"
+    target["nim"] = nim_baru.strip()
+    target["pass_hash"] = _hash_pw(nim_baru)
+    _save_login_all(akun)
     return "ok"
 
 

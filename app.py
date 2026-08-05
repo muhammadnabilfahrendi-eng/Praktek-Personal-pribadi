@@ -1290,6 +1290,8 @@ def page_login():
             u = st.text_input("Nama Lengkap")
             p1 = st.text_input("NIM (Password)", type="password")
             p2 = st.text_input("Ulangi NIM", type="password")
+            pert = st.text_input("Pertanyaan keamanan (untuk lupa NIM)")
+            jwb = st.text_input("Jawaban", type="password")
             buat = st.form_submit_button("Buat Akun", type="primary", width="stretch")
         if buat:
             if not u.strip() or not p1:
@@ -1298,8 +1300,10 @@ def page_login():
                 col.error("NIM tidak sama.")
             elif len(p1) < 4:
                 col.error("NIM minimal 4 karakter.")
+            elif not pert.strip() or not jwb:
+                col.error("Pertanyaan keamanan dan jawaban wajib diisi.")
             else:
-                hasil = db.create_login(u.strip(), p1, p1)
+                hasil = db.create_login(u.strip(), p1, p1, pert, jwb)
                 if hasil == "ok":
                     st.session_state["_pesan"] = f"Akun '{u.strip()}' dibuat. Silakan masuk."
                     st.rerun()
@@ -1313,6 +1317,8 @@ def page_login():
             u = st.text_input("Nama Lengkap")
             p1 = st.text_input("NIM (Password)", type="password")
             p2 = st.text_input("Ulangi NIM", type="password")
+            pert = st.text_input("Pertanyaan keamanan (untuk lupa NIM)")
+            jwb = st.text_input("Jawaban", type="password")
             buat = st.form_submit_button("Daftar", type="primary", width="stretch")
         if buat:
             if not u.strip() or not p1:
@@ -1321,8 +1327,10 @@ def page_login():
                 col.error("NIM tidak sama.")
             elif len(p1) < 4:
                 col.error("NIM minimal 4 karakter.")
+            elif not pert.strip() or not jwb:
+                col.error("Pertanyaan keamanan dan jawaban wajib diisi.")
             else:
-                hasil = db.create_login(u.strip(), p1, p1)
+                hasil = db.create_login(u.strip(), p1, p1, pert, jwb)
                 if hasil == "ok":
                     st.session_state["_pesan"] = f"Akun '{u.strip()}' berhasil didaftarkan. Silakan masuk."
                     st.session_state["_hal"] = "masuk"
@@ -1331,6 +1339,57 @@ def page_login():
                     col.error(hasil)
         if col.button("← Kembali ke login", width="stretch", type="tertiary"):
             st.session_state["_hal"] = "masuk"
+            st.rerun()
+        return
+
+    elif mode == "lupa":
+        # Lupa NIM / password (dengan pertanyaan keamanan)
+        col.caption("Masukkan nama lengkap akunmu untuk melihat pertanyaan keamanan.")
+        with col.form("frm_lupa"):
+            u = st.text_input("Nama Lengkap")
+            cari = st.form_submit_button("Lanjut", type="primary", width="stretch")
+        if cari:
+            st.session_state["_q_user"] = u.strip()
+            st.session_state["_q"] = db.get_pertanyaan(u.strip()) or ""
+            st.session_state["_q_done"] = True
+            st.rerun()
+        q = st.session_state.get("_q", "")
+        if st.session_state.get("_q_done") and not q:
+            col.info("Akun tidak ditemukan atau belum mengatur pertanyaan keamanan — hubungi admin.")
+        if q:
+            _q_user = st.session_state.get("_q_user", "")
+            col.markdown(
+                f'<div class="absen-rule">Pertanyaan keamanan: <b>{html.escape(q)}</b></div>',
+                unsafe_allow_html=True,
+            )
+            with col.form("frm_lupa2"):
+                jwb = st.text_input("Jawaban", type="password")
+                n1 = st.text_input("NIM Baru (Password Baru)", type="password")
+                n2 = st.text_input("Ulangi NIM Baru", type="password")
+                reset = st.form_submit_button("Reset", type="primary", width="stretch")
+            if reset:
+                if not jwb or not n1:
+                    col.error("Jawaban dan NIM baru wajib diisi.")
+                elif n1 != n2:
+                    col.error("NIM baru tidak sama.")
+                elif len(n1) < 4:
+                    col.error("NIM minimal 4 karakter.")
+                else:
+                    hasil = db.reset_password(_q_user, jwb, n1)
+                    if hasil == "ok":
+                        st.session_state["_pesan"] = f"NIM akun '{_q_user}' berhasil direset. Silakan masuk dengan NIM baru."
+                        st.session_state["_hal"] = "masuk"
+                        st.session_state.pop("_q", None)
+                        st.session_state.pop("_q_user", None)
+                        st.session_state.pop("_q_done", None)
+                        st.rerun()
+                    else:
+                        col.error(hasil)
+        if col.button("← Kembali ke login", width="stretch", type="tertiary"):
+            st.session_state["_hal"] = "masuk"
+            st.session_state.pop("_q", None)
+            st.session_state.pop("_q_user", None)
+            st.session_state.pop("_q_done", None)
             st.rerun()
         return
 
@@ -1352,6 +1411,9 @@ def page_login():
 
     if db.login_exists() and col.button("Daftar Akun Baru", width="stretch"):
         st.session_state["_hal"] = "daftar"
+        st.rerun()
+    if db.login_exists() and col.button("Lupa NIM / Password?", width="stretch", type="tertiary"):
+        st.session_state["_hal"] = "lupa"
         st.rerun()
 
 
