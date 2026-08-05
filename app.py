@@ -810,21 +810,17 @@ def page_jadwal():
         dosen = c3.text_input("Dosen", key=f"dosen_mk_{ver}")
         sks = c4.number_input("SKS", min_value=1, max_value=6, value=3, key=f"sks_mk_{ver}")
         t1, t2 = st.columns(2)
-        jam_masuk = t1.text_input("Jam Masuk", value="08:00", key=f"jm_mulai_{ver}")
-        jam_selesai = t2.text_input("Jam Selesai", value="12:40", key=f"jm_selesai_{ver}")
+        jam_masuk = t1.time_input("Jam Masuk", value=time(8, 0), step=timedelta(minutes=5), key=f"jm_mulai_{ver}")
+        jam_selesai = t2.time_input("Jam Selesai", value=time(12, 40), step=timedelta(minutes=5), key=f"jm_selesai_{ver}")
         c5, c6 = st.columns(2)
         hari = c5.selectbox("Hari", db.HARI, key=f"hari_mk_{ver}")
         ruang = c6.text_input("Ruang", key=f"ruang_mk_{ver}")
         st.caption("Jam selesai diisi manual sesuai jadwal kampus.")
         if st.button("Simpan", type="primary", width="stretch"):
-            jm = _norm_jam(jam_masuk)
-            js = _norm_jam(jam_selesai)
+            jm = jam_masuk.strftime("%H:%M")
+            js = jam_selesai.strftime("%H:%M")
             if not nama.strip():
                 st.error("Nama matakuliah wajib diisi.")
-            elif jm is None:
-                st.error("Jam masuk tidak valid (contoh: 10:10).")
-            elif js is None:
-                st.error("Jam selesai tidak valid (contoh: 12:40).")
             elif js <= jm:
                 st.error("Jam selesai harus setelah jam masuk.")
             else:
