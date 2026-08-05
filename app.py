@@ -26,6 +26,35 @@ def _norm_jam(s):
         return None
     return f"{j:02d}:{mnt:02d}"
 
+
+def _now_wib():
+    """Waktu sekarang dalam zona WIB (UTC+7) tanpa info zona."""
+    from datetime import timezone
+
+    return datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None)
+
+
+def _window_absen(j):
+    """Status window absen untuk satu jadwal.
+    Mengembalikan ("aktif"|"belum"|"lewat", keterangan)."""
+    if not j["jam_mulai"] or not j["jam_selesai"]:
+        return "aktif", ""
+    try:
+        t1 = datetime.strptime(j["jam_mulai"], "%H:%M")
+        t2 = datetime.strptime(j["jam_selesai"], "%H:%M")
+    except ValueError:
+        return "aktif", ""
+    tgl = _now_wib().date()
+    mulai = datetime.combine(tgl, t1.time()) - timedelta(minutes=10)
+    akhir = datetime.combine(tgl, t2.time()) + timedelta(hours=1)
+    now = _now_wib()
+    if now < mulai:
+        mnt = int((mulai - now).total_seconds() // 60) + 1
+        return "belum", f"bisa absen mulai {mulai.strftime('%H:%M')} (H-10 menit, {mnt} mnt lagi)"
+    if now > akhir:
+        return "lewat", "window absen selesai (+1 jam setelah MK)"
+    return "aktif", ""
+
 st.set_page_config(page_title="Catatan Semester 5", layout="wide", initial_sidebar_state="expanded")
 
 CSS = """
@@ -380,6 +409,19 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
 }
 .absen-sub {
     color: #7f8ea3;
+    font-size: .78rem;
+}
+.absen-rule {
+    color: #7f8ea3;
+    font-size: .78rem;
+    margin: -4px 0 10px 0;
+}
+.absen-lock {
+    margin: 2px 0 6px 0;
+    padding: 6px 12px;
+    border: 1px dashed rgba(100,116,139,.45);
+    border-radius: 10px;
+    color: #64748b;
     font-size: .78rem;
 }
 
@@ -770,25 +812,30 @@ def page_absen():
         st.info("Tambahkan matakuliah dulu di menu Jadwal Kuliah.")
         return
 
-    # ---------- Absen Cepat per Hari (otomatis dari jadwal) ----------
+    # ---------- Absen Cepat Hari Ini (otomatis dari jadwal + window waktu) ----------
     st.markdown(
-        '<div class="panel"><div class="panel-title">Absen Cepat · dari Jadwal Harian</div>',
+        '<div class="panel"><div class="panel-title">Absen Cepat · Jadwal Hari Ini</div>'
+        '<div class="absen-rule">MK muncul otomatis H-10 menit sebelum mulai, '
+        'bisa diabsen sampai +1 jam setelah selesai.</div>',
         unsafe_allow_html=True,
     )
-    c_tgl, c_hari = st.columns([2, 1])
-    tgl_cepat = c_tgl.date_input("Pilih Tanggal", value=date.today(), key="absen_cepat_tgl")
-    hari_nama = db.HARI[tgl_cepat.weekday()]
-    c_hari.markdown(f'<div class="absen-hari">Hari: <b>{hari_nama}</b></div>', unsafe_allow_html=True)
+    tgl_hari = _now_wib().date()
+    hari_nama = db.HARI[tgl_hari.weekday()]
+    st.markdown(
+        f'<div class="absen-hari">Hari: <b>{hari_nama}</b> · {tgl_hari.isoformat()}</div>',
+        unsafe_allow_html=True,
+    )
     jdwl = db.jadwal_list(hari=hari_nama)
     if not jdwl:
-        st.info(f"Tidak ada jadwal kuliah hari {hari_nama}. Tambahkan di menu Jadwal Kuliah.")
+        st.info(f"Tidak ada jadwal kuliah hari {hari_nama}.")
     else:
-        catat = {a["id_matakuliah"]: a for a in db.absensi_by_tanggal(tgl_cepat.isoformat())}
+        catat = {a["id_matakuliah"]: a for a in db.absensi_by_tanggal(tgl_hari.isoformat())}
         for j in jdwl:
             sub = j["kode"] or "-"
             if j["ruang"]:
                 sub += f" · {j['ruang']}"
             ada = catat.get(j["id_matakuliah"])
+            win, ket = _window_absen(j)
             c1, c2, c3 = st.columns([1.2, 2.9, 1.5])
             c1.markdown(f"**{j['jam_mulai'] or '-'}**")
             c2.markdown(
@@ -801,25 +848,36 @@ def page_absen():
                     f'{ada["status"]}</span>',
                     unsafe_allow_html=True,
                 )
-            else:
+            elif win == "aktif":
                 c3.markdown(
-                    '<span class="tbl-badge" style="color:#94a3b8">Belum</span>',
+                    '<span class="tbl-badge" style="color:#60a5fa">Bisa absen</span>',
                     unsafe_allow_html=True,
                 )
-            kb = st.columns(4)
-            for stt, kol in zip(db.STATUS_ABSEN, kb):
-                kunci = f"ck_{j['id_matakuliah']}_{stt}_{tgl_cepat.isoformat()}"
-                dis = ada is not None and ada["status"] == stt
-                if kol.button(
-                    stt, width="stretch", key=kunci, disabled=dis,
-                ):
-                    db.set_absensi(j["id_matakuliah"], tgl_cepat.isoformat(), stt)
-                    st.session_state["flash"] = (
-                        f"{j['matakuliah']} · {hari_nama} {tgl_cepat.isoformat()} → {stt} ✔"
-                    )
-                    sync.push()
-                    st.rerun()
-        st.markdown("<br>", unsafe_allow_html=True)
+            elif win == "belum":
+                c3.markdown(
+                    '<span class="tbl-badge" style="color:#94a3b8">Belum waktunya</span>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                c3.markdown(
+                    '<span class="tbl-badge" style="color:#64748b">Terlewat</span>',
+                    unsafe_allow_html=True,
+                )
+            if win == "aktif":
+                kb = st.columns(4)
+                for stt, kol in zip(db.STATUS_ABSEN, kb):
+                    kunci = f"ck_{j['id_matakuliah']}_{stt}_{tgl_hari.isoformat()}"
+                    dis = ada is not None and ada["status"] == stt
+                    if kol.button(stt, width="stretch", key=kunci, disabled=dis):
+                        db.set_absensi(j["id_matakuliah"], tgl_hari.isoformat(), stt)
+                        st.session_state["flash"] = f"{j['matakuliah']} · {hari_nama} → {stt} ✔"
+                        sync.push()
+                        st.rerun()
+            else:
+                st.markdown(
+                    f'<div class="absen-lock">Locked · {ket}</div>',
+                    unsafe_allow_html=True,
+                )
     st.markdown("</div>", unsafe_allow_html=True)
 
     labels = [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_list]
@@ -839,14 +897,31 @@ def page_absen():
 
     ab_ver = st.session_state.get("_absen_ver", 0)
     with st.expander("Input Kehadiran", expanded=True):
+        tgl_hari_ini = _now_wib().date()
         c1, c2 = st.columns(2)
         with c1:
-            tanggal = st.date_input("Tanggal", value=date.today(), key=f"absen_tgl_{ab_ver}")
+            tanggal = st.date_input(
+                "Tanggal", value=tgl_hari_ini, key=f"absen_tgl_{ab_ver}",
+                min_value=tgl_hari_ini, max_value=tgl_hari_ini,
+            )
         with c2:
             status = st.selectbox("Status", db.STATUS_ABSEN, key=f"absen_status_{ab_ver}")
         catatan = st.text_input("Catatan (opsional)", key=f"absen_cat_{ab_ver}")
-        st.markdown(f"**Hari: {db.HARI[tanggal.weekday()]}**")
-        if st.button("Simpan", type="primary", width="stretch"):
+        st.markdown(f"**Hari: {db.HARI[tgl_hari_ini.weekday()]}**")
+        jdwl_mk = [
+            j for j in db.jadwal_list(hari=db.HARI[tgl_hari_ini.weekday()])
+            if j["id_matakuliah"] == m["id"]
+        ]
+        win_mk = [_window_absen(j) for j in jdwl_mk]
+        boleh = bool(jdwl_mk) and any(w[0] == "aktif" for w in win_mk)
+        if not jdwl_mk:
+            st.warning(
+                f"Tidak ada jadwal {m['nama']} hari ini. Absen hanya bisa dicatat "
+                "saat MK berlangsung (H-10 menit sampai +1 jam setelah selesai)."
+            )
+        elif not boleh:
+            st.warning(f"Window absen {m['nama']} hari ini sedang tidak terbuka.")
+        if st.button("Simpan", type="primary", width="stretch", disabled=not boleh):
             ok = db.add_absensi(
                 m["id"], tanggal.isoformat(), status, catatan.strip()
             )
