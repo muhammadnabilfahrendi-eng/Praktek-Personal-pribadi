@@ -177,7 +177,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
 [data-testid="stTextInputRootElement"],
 [data-testid="stTextAreaRootElement"],
 [data-testid="stNumberInputContainer"],
-[data-testid="stDateInputField"] [data-baseweb="input"],
+[data-testid="stDateInput"] [data-baseweb="input"],
 [data-testid="stTimeInputTimeDisplay"],
 [data-testid="stSelectbox"] div:has(> input) {
     background: linear-gradient(180deg, rgba(148,184,255,.16), rgba(59,130,246,.09)) !important;
@@ -193,7 +193,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
 [data-testid="stTextInputRootElement"]:hover,
 [data-testid="stTextAreaRootElement"]:hover,
 [data-testid="stNumberInputContainer"]:hover,
-[data-testid="stDateInputField"] [data-baseweb="input"]:hover,
+[data-testid="stDateInput"] [data-baseweb="input"]:hover,
 [data-testid="stTimeInputTimeDisplay"]:hover,
 [data-testid="stSelectbox"] div:has(> input):hover {
     background: linear-gradient(180deg, rgba(148,184,255,.24), rgba(59,130,246,.15)) !important;
@@ -201,7 +201,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
 [data-testid="stTextInputRootElement"]:focus-within,
 [data-testid="stTextAreaRootElement"]:focus-within,
 [data-testid="stNumberInputContainer"]:focus-within,
-[data-testid="stDateInputField"] [data-baseweb="input"]:focus-within,
+[data-testid="stDateInput"] [data-baseweb="input"]:focus-within,
 [data-testid="stTimeInputTimeDisplay"]:focus-within,
 [data-testid="stSelectbox"] div:has(> input):focus-within {
     background: linear-gradient(180deg, rgba(148,184,255,.2), rgba(59,130,246,.12)) !important;
@@ -210,7 +210,8 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
 [data-testid="stNumberInputField"],
 [data-testid="stTextInput"] [data-baseweb="base-input"],
 [data-testid="stTextArea"] [data-baseweb="base-input"],
-[data-testid="stDateInputField"] [data-baseweb="base-input"],
+[data-testid="stDateInput"] [data-baseweb="base-input"],
+[data-testid="stDateInputField"],
 [data-testid="stTimeInputTimeDisplay"] *,
 [data-testid="stSelectbox"] input {
     background: transparent !important;
