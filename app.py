@@ -4,6 +4,7 @@ from datetime import date, datetime, time, timedelta
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 import db
 import sync
@@ -36,31 +37,76 @@ def _now_wib():
 
 def _window_absen(j):
     """Status window absen untuk satu jadwal.
-    Mengembalikan ("aktif"|"belum"|"lewat", keterangan)."""
+    Mengembalikan (status, keterangan, epoch_buka, epoch_tutup);
+    status: "aktif"|"belum"|"lewat", epoch = detik (Unix time) atau None."""
     if not j["jam_mulai"] or not j["jam_selesai"]:
-        return "aktif", ""
+        return "aktif", "", None, None
     try:
         t1 = datetime.strptime(j["jam_mulai"], "%H:%M")
         t2 = datetime.strptime(j["jam_selesai"], "%H:%M")
     except ValueError:
-        return "aktif", ""
+        return "aktif", "", None, None
     tgl = _now_wib().date()
     mulai = datetime.combine(tgl, t1.time()) - timedelta(minutes=10)
     akhir = datetime.combine(tgl, t2.time()) + timedelta(hours=1)
     now = _now_wib()
+    from datetime import timezone
+
+    wib = timezone(timedelta(hours=7))
+    buka_ep = int(mulai.replace(tzinfo=wib).timestamp())
+    tutup_ep = int(akhir.replace(tzinfo=wib).timestamp())
     if now < mulai:
         return (
             "belum",
             f"bisa absen {mulai.strftime('%H:%M')} s/d {akhir.strftime('%H:%M')} "
             "(H-10 menit, +1 jam setelah MK)",
+            buka_ep, tutup_ep,
         )
     if now > akhir:
         return (
             "lewat",
             f"absen sudah ditutup pukul {akhir.strftime('%H:%M')} "
             "(H-10 menit s/d +1 jam setelah MK)",
+            buka_ep, tutup_ep,
         )
-    return "aktif", f"ditutup pukul {akhir.strftime('%H:%M')}"
+    return "aktif", f"ditutup pukul {akhir.strftime('%H:%M')}", buka_ep, tutup_ep
+
+
+def _timer_html(uid, end_epoch, txt_awal, txt_selesai):
+    """Jam hitung mundur real-time (JS) sampai epoch habis, lalu jadi teks merah."""
+    tpl = """<div id="tm_{uid}" style="color:#7f8ea3;font-size:.78rem;margin-top:2px">
+<span id="tmx_{uid}">{txt_awal}</span></div>
+<script>
+(function() {
+  var end = {end} * 1000;
+  var el = document.getElementById('tm_{uid}');
+  var tx = document.getElementById('tmx_{uid}');
+  function p(n) { return (n < 10 ? '0' : '') + n; }
+  function fmt(s) {
+    s = Math.max(0, Math.floor(s));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    return (h > 0 ? h + ':' : '') + p(m) + ':' + p(ss);
+  }
+  function tick() {
+    var sisa = (end - Date.now()) / 1000;
+    if (sisa <= 0) {
+      tx.textContent = '{txt_selesai}';
+      el.style.color = '#ef4444';
+      el.style.fontWeight = '700';
+    } else {
+      tx.textContent = '{txt_awal} ' + fmt(sisa);
+    }
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>"""
+    return (
+        tpl.replace("{uid}", uid)
+        .replace("{end}", str(end_epoch))
+        .replace("{txt_awal}", txt_awal)
+        .replace("{txt_selesai}", txt_selesai)
+    )
 
 st.set_page_config(page_title="Catatan Semester 5", layout="wide", initial_sidebar_state="expanded")
 
@@ -430,11 +476,6 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
     border-radius: 10px;
     color: #64748b;
     font-size: .78rem;
-}
-.absen-note {
-    color: #7f8ea3;
-    font-size: .78rem;
-    margin: -2px 0 8px 0;
 }
 
 [data-testid="stButton"] button[kind="primary"], [data-testid="stFormSubmitButton"] button[kind="primary"] {
@@ -847,7 +888,7 @@ def page_absen():
             if j["ruang"]:
                 sub += f" · {j['ruang']}"
             ada = catat.get(j["id_matakuliah"])
-            win, ket = _window_absen(j)
+            win, ket, buka_ep, tutup_ep = _window_absen(j)
             if ada:
                 badge = (
                     f'<span class="tbl-badge" style="color:{_WARNA_STATUS.get(ada["status"], "#94a3b8")}">'
@@ -858,16 +899,26 @@ def page_absen():
             elif win == "belum":
                 badge = '<span class="tbl-badge" style="color:#94a3b8">Belum waktunya</span>'
             else:
-                badge = '<span class="tbl-badge" style="color:#64748b">Terlewat</span>'
-            if win == "aktif" and ket:
-                badge += f'<div class="absen-note">Absen {ket}</div>'
+                badge = '<span class="tbl-badge" style="color:#ef4444">Terlewat</span>'
             c1, c2, c3 = st.columns([1.2, 2.9, 1.5])
             c1.markdown(f"**{j['jam_mulai'] or '-'}**")
             c2.markdown(
                 f"**{j['matakuliah']}**<br><small class='absen-sub'>{sub}</small>",
                 unsafe_allow_html=True,
             )
-            c3.markdown(badge, unsafe_allow_html=True)
+            with c3:
+                st.markdown(badge, unsafe_allow_html=True)
+                uid_t = f"tm_{j['id_matakuliah']}_{win}_{tgl_hari.isoformat()}"
+                if win == "belum" and buka_ep:
+                    components.html(
+                        _timer_html(uid_t, buka_ep, "Buka dalam", "Sudah buka"),
+                        height=30,
+                    )
+                elif win in ("aktif", "lewat") and tutup_ep:
+                    components.html(
+                        _timer_html(uid_t, tutup_ep, "Ditutup dalam", "Absensi ditutup"),
+                        height=30,
+                    )
             if win == "aktif":
                 kb = st.columns(4)
                 for stt, kol in zip(db.STATUS_ABSEN, kb):
@@ -878,7 +929,7 @@ def page_absen():
                         st.session_state["flash"] = f"{j['matakuliah']} · {hari_nama} → {stt} ✔"
                         sync.push()
                         st.rerun()
-            else:
+            elif not ada:
                 st.markdown(
                     f'<div class="absen-lock">Locked · {ket}</div>',
                     unsafe_allow_html=True,
