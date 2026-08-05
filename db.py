@@ -448,6 +448,108 @@ def matakuliah_list(user):
     return rows
 
 
+# ---------- Katalog matakuliah (master, diinput admin) ----------
+
+def katalog_list():
+    """Daftar matakuliah master yang diinput admin (global, dipakai semua user).
+    Jika belum ada katalog, diisi satu kali otomatis dari matakuliah user yang
+    sudah ada agar data lama tetap terwakili."""
+    all_d = load_data()
+    if "_katalog" not in all_d:
+        seen = {}
+        for d in all_d.get("users", {}).values():
+            for m in d.get("matakuliah", []):
+                key = ((m.get("kode") or m.get("nama") or "")).strip().lower()
+                if key and key not in seen:
+                    seen[key] = {
+                        "id": max([x["id"] for x in seen.values()], default=0) + 1,
+                        "kode": m.get("kode", ""),
+                        "nama": m.get("nama", ""),
+                        "dosen": m.get("dosen", ""),
+                        "sks": int(m.get("sks") or 3),
+                    }
+        all_d["_katalog"] = list(seen.values())
+        save_data(all_d)
+    return all_d.get("_katalog", [])
+
+
+def katalog_get(kid):
+    return next((k for k in katalog_list() if k["id"] == kid), None)
+
+
+def katalog_add(kode, nama, dosen, sks):
+    """Tambah matakuliah master (katalog). Kembalikan id baru atau None jika duplikat kode."""
+    nama = nama.strip()
+    kode = (kode or "").strip()
+    if not nama:
+        return None
+    all_d = load_data()
+    kat = all_d.get("_katalog")
+    if kat is None:
+        katalog_list()
+        all_d = load_data()
+        kat = all_d.get("_katalog", [])
+    for k in kat:
+        if kode and k.get("kode") and k["kode"].lower() == kode.lower():
+            return None
+    k = {
+        "id": _next_id(kat),
+        "kode": kode,
+        "nama": nama,
+        "dosen": dosen.strip(),
+        "sks": int(sks or 3),
+    }
+    kat.append(k)
+    all_d["_katalog"] = kat
+    save_data(all_d)
+    return k["id"]
+
+
+def katalog_delete(kid):
+    all_d = load_data()
+    kat = all_d.get("_katalog", [])
+    all_d["_katalog"] = [k for k in kat if k["id"] != kid]
+    save_data(all_d)
+
+
+def add_jadwal_dari_katalog(user, kid, hari, jam_mulai, jam_selesai, ruang):
+    """Tambah jadwal user untuk matakuliah master (katalog admin). Matakuliah
+    otomatis disalin ke akun user bila belum dimiliki. Kembalikan (ok, pesan)."""
+    k = katalog_get(kid)
+    if not k:
+        return False, "Matakuliah tidak ditemukan di daftar admin."
+    data = data_user(user)
+    mid = None
+    for m in data["matakuliah"]:
+        if k.get("kode") and m.get("kode") and m["kode"].lower() == k["kode"].lower():
+            mid = m["id"]
+            break
+    if mid is None:
+        m = {
+            "id": _next_id(data["matakuliah"]),
+            "kode": k["kode"],
+            "nama": k["nama"],
+            "dosen": k["dosen"],
+            "sks": k["sks"],
+            "jam_masuk": "",
+            "jam_selesai": "",
+        }
+        data["matakuliah"].append(m)
+        mid = m["id"]
+    data["jadwal"].append(
+        {
+            "id": _next_id(data["jadwal"]),
+            "id_matakuliah": mid,
+            "hari": hari,
+            "jam_mulai": jam_mulai,
+            "jam_selesai": jam_selesai,
+            "ruang": ruang,
+        }
+    )
+    save_user(user, data)
+    return True, k["nama"]
+
+
 # ---------- Jadwal ----------
 
 def add_jadwal(user, id_matakuliah, hari, jam_mulai, jam_selesai, ruang):

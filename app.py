@@ -879,48 +879,44 @@ def page_jadwal(head=True):
     if boleh_isi:
         ver = st.session_state.get("_mk_form_ver", 0)
         tutup_form = st.session_state.pop("_mk_form_tutup", False)
-        with st.expander("Tambah Matakuliah + Jadwal", expanded=not tutup_form):
-            c1, c2 = st.columns(2)
-            kode = c1.text_input("Kode MK", key=f"kode_mk_{ver}")
-            nama = c2.text_input("Matakuliah", key=f"nama_mk_{ver}")
-            c3, c4 = st.columns(2)
-            dosen = c3.text_input("Dosen", key=f"dosen_mk_{ver}")
-            sks = c4.number_input("SKS", min_value=1, max_value=6, value=3, key=f"sks_mk_{ver}")
-            t1, t2 = st.columns(2)
-            with t1:
-                jam_masuk = _time_picker_ui("Jam Masuk", "08:00", f"jm_pick_mulai_{ver}")
-            with t2:
-                jam_selesai = _time_picker_ui("Jam Selesai", "12:40", f"jm_pick_selesai_{ver}")
-            c5, c6 = st.columns(2)
-            hari = c5.selectbox("Hari", db.HARI, key=f"hari_mk_{ver}")
-            ruang = c6.text_input("Ruang", key=f"ruang_mk_{ver}")
-            st.caption("Jam selesai diisi manual sesuai jadwal kampus.")
-            if st.button("Simpan", type="primary", width="stretch", key=f"jdwl_simpan_{ver}"):
-                jm = jam_masuk
-                js = jam_selesai
-                if not nama.strip():
-                    st.error("Nama matakuliah wajib diisi.")
-                elif not jm or not js:
-                    st.error("Jam masuk dan jam selesai wajib diisi.")
-                elif js <= jm:
-                    st.error("Jam selesai harus setelah jam masuk.")
-                else:
-                    mid = db.add_matakuliah(
-                        _user,
-                        kode.strip(), nama.strip(), dosen.strip(), int(sks), jm, js,
-                    )
-                    if mid is None:
-                        st.error(f"Matakuliah dengan kode '{kode}' sudah ada.")
+        kat = db.katalog_list()
+        with st.expander("Tambah Jadwal", expanded=not tutup_form):
+            if not kat:
+                st.info("Belum ada matakuliah dari admin — tunggu admin menambahkan daftar matakuliah.")
+            else:
+                labels_kat = [
+                    f"{k['nama']} ({k['kode']})" if k["kode"] else k["nama"] for k in kat
+                ]
+                mk_pilih = st.selectbox("Matakuliah (daftar admin)", labels_kat, key=f"kat_mk_{ver}")
+                t1, t2 = st.columns(2)
+                with t1:
+                    jam_masuk = _time_picker_ui("Jam Mulai", "08:00", f"jm_pick_mulai_{ver}")
+                with t2:
+                    jam_selesai = _time_picker_ui("Jam Selesai", "12:40", f"jm_pick_selesai_{ver}")
+                c5, c6 = st.columns(2)
+                hari = c5.selectbox("Hari", db.HARI, key=f"hari_mk_{ver}")
+                ruang = c6.text_input("Ruang", key=f"ruang_mk_{ver}")
+                st.caption("Jam selesai diisi manual sesuai jadwal kampus.")
+                if st.button("Simpan", type="primary", width="stretch", key=f"jdwl_simpan_{ver}"):
+                    kid = kat[labels_kat.index(mk_pilih)]["id"]
+                    jm = jam_masuk
+                    js = jam_selesai
+                    if not jm or not js:
+                        st.error("Jam mulai dan jam selesai wajib diisi.")
+                    elif js <= jm:
+                        st.error("Jam selesai harus setelah jam mulai.")
                     else:
-                        db.add_jadwal(
-                            _user,
-                            mid, hari, jm, js, ruang.strip(),
+                        ok, pesan = db.add_jadwal_dari_katalog(
+                            _user, kid, hari, jm, js, ruang.strip(),
                         )
-                        st.session_state["flash"] = f"Matakuliah '{nama}' + jadwal ditambahkan."
-                        st.session_state["_mk_form_ver"] = ver + 1
-                        st.session_state["_mk_form_tutup"] = True
-                        sync.push()
-                        st.rerun()
+                        if not ok:
+                            st.error(pesan)
+                        else:
+                            st.session_state["flash"] = f"Jadwal '{pesan}' ditambahkan."
+                            st.session_state["_mk_form_ver"] = ver + 1
+                            st.session_state["_mk_form_tutup"] = True
+                            sync.push()
+                            st.rerun()
     else:
         if db.jadwal_locked():
             st.info("🔒 Pengisian jadwal **dinonaktifkan oleh admin** — kamu hanya bisa melihat jadwalmu. Tunggu admin membukanya kembali.")
@@ -942,16 +938,14 @@ def page_jadwal(head=True):
         sel, pos = select_table(df, "tbl_jdwl", height=300)
         if sel:
             jid = jdwl[pos]["id"]
-            if _is_admin:
-                if st.button("Hapus Jadwal", width="stretch", key="jdwl_hapus"):
-                    hapus_dialog(f"jadwal {sel['Matakuliah']} {sel['Hari']} {sel['Mulai']}", lambda: db.delete_jadwal(_user, jid))
-            else:
-                st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
+            if st.button("Hapus Jadwal", width="stretch", key="jdwl_hapus"):
+                hapus_dialog(f"jadwal {sel['Matakuliah']} {sel['Hari']} {sel['Mulai']}", lambda: db.delete_jadwal(_user, jid))
     else:
         st.info("Belum ada jadwal.")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown(f'<div class="panel"><div class="panel-title">Daftar Matakuliah ({len(mk_list)})</div>', unsafe_allow_html=True)
+    st.caption("Matakuliah diambil dari daftar yang diinput admin. Tidak bisa ditambah atau dihapus sendiri.")
     dfm = pd.DataFrame(mk_list)
     if not dfm.empty:
         dfm["jam"] = dfm.apply(
@@ -961,15 +955,7 @@ def page_jadwal(head=True):
         dfm = dfm[["nama", "kode", "dosen", "sks", "jam"]].rename(
             columns={"nama": "Matakuliah", "kode": "Kode", "dosen": "Dosen", "sks": "SKS", "jam": "Jam Masuk"}
         )
-        selm, posm = select_table(dfm, "tbl_mk", height=260)
-        if selm:
-            mid_sel = mk_list[posm]["id"]
-            st.caption("Menghapus matakuliah ikut menghapus jadwal, absen, dan tugasnya.")
-            if _is_admin:
-                if st.button("Hapus Matakuliah", width="stretch", key="mk_hapus"):
-                    hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(_user, mid_sel))
-            else:
-                st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
+        tabel_html(dfm, height=260)
     else:
         st.info("Belum ada matakuliah.")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1443,6 +1429,43 @@ def page_kelola():
         if st.button("Hapus Akun", type="secondary", width="stretch", key="kelola_hapus"):
             hapus_dialog(f"akun '{target}' beserta seluruh datanya", lambda: db.delete_akun(target))
 
+    st.markdown('<div class="panel"><div class="panel-title">Daftar Matakuliah (Master)</div>', unsafe_allow_html=True)
+    st.caption("Matakuliah yang bisa dijadwalkan user. User hanya bisa menambah jadwal untuk matakuliah yang ada di daftar ini.")
+    kat = db.katalog_list()
+    if kat:
+        dfk = pd.DataFrame(kat)[["kode", "nama", "dosen", "sks"]].rename(
+            columns={"kode": "Kode", "nama": "Matakuliah", "dosen": "Dosen", "sks": "SKS"}
+        )
+        dfk["SKS"] = dfk["SKS"].astype(int)
+        selk, posk = select_table(dfk, "tbl_kat", height=220)
+        if selk:
+            if st.button("Hapus Matakuliah", width="stretch", key="kat_hapus"):
+                db.katalog_delete(kat[posk]["id"])
+                st.session_state["flash"] = f"Matakuliah '{selk['Matakuliah']}' dihapus dari daftar master."
+                sync.push()
+                st.rerun()
+    else:
+        st.info("Belum ada matakuliah. Tambahkan lewat form di bawah.")
+    st.divider()
+    c1, c2 = st.columns(2)
+    kode = c1.text_input("Kode MK (opsional)", key="kat_kode")
+    nama = c2.text_input("Nama Matakuliah", key="kat_nama")
+    c3, c4 = st.columns(2)
+    dosen = c3.text_input("Dosen", key="kat_dosen")
+    sks = c4.number_input("SKS", min_value=1, max_value=6, value=3, key="kat_sks")
+    if st.button("Tambah Matakuliah", type="primary", width="stretch", key="kat_tambah"):
+        if not nama.strip():
+            st.error("Nama matakuliah wajib diisi.")
+        else:
+            kid = db.katalog_add(kode, nama, dosen, sks)
+            if kid is None:
+                st.error(f"Kode '{kode}' sudah ada di daftar.")
+            else:
+                st.session_state["flash"] = f"Matakuliah '{nama.strip()}' ditambahkan ke daftar master."
+                sync.push()
+                st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ---------- Tugas Massal (admin) ----------
 
@@ -1523,14 +1546,12 @@ def page_data_mahasiswa():
         st.info("Belum ada akun user — daftarkan dulu lewat halaman login.")
         return
     st.caption(f"Data akun: **{_user}** — pilih akun lain di sidebar 'Lihat data akun'.")
-    tabs = st.tabs(["Jadwal Kuliah", "Absen", "Tugas Harian", "UTS & UAS"])
+    tabs = st.tabs(["Absen", "Tugas Harian", "UTS & UAS"])
     with tabs[0]:
-        page_jadwal(head=False)
-    with tabs[1]:
         page_absen(head=False)
-    with tabs[2]:
+    with tabs[1]:
         page_tugas("Harian", head=False)
-    with tabs[3]:
+    with tabs[2]:
         page_tugas(None, head=False)
 
 
