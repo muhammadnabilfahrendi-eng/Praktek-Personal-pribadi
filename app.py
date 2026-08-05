@@ -368,6 +368,20 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
     box-shadow: 0 0 10px rgba(56,189,248,.6);
     vertical-align: -2px;
 }
+.absen-hari {
+    margin-top: 30px;
+    padding: 8px 12px;
+    border: 1px solid rgba(96,165,250,.35);
+    border-radius: 12px;
+    background: rgba(59,130,246,.12);
+    color: #bfdbfe;
+    font-size: .9rem;
+    text-align: center;
+}
+.absen-sub {
+    color: #7f8ea3;
+    font-size: .78rem;
+}
 
 [data-testid="stButton"] button[kind="primary"], [data-testid="stFormSubmitButton"] button[kind="primary"] {
     background: linear-gradient(120deg, #3b82f6, #06b6d4);
@@ -755,6 +769,58 @@ def page_absen():
     if not mk_list:
         st.info("Tambahkan matakuliah dulu di menu Jadwal Kuliah.")
         return
+
+    # ---------- Absen Cepat per Hari (otomatis dari jadwal) ----------
+    st.markdown(
+        '<div class="panel"><div class="panel-title">Absen Cepat · dari Jadwal Harian</div>',
+        unsafe_allow_html=True,
+    )
+    c_tgl, c_hari = st.columns([2, 1])
+    tgl_cepat = c_tgl.date_input("Pilih Tanggal", value=date.today(), key="absen_cepat_tgl")
+    hari_nama = db.HARI[tgl_cepat.weekday()]
+    c_hari.markdown(f'<div class="absen-hari">Hari: <b>{hari_nama}</b></div>', unsafe_allow_html=True)
+    jdwl = db.jadwal_list(hari=hari_nama)
+    if not jdwl:
+        st.info(f"Tidak ada jadwal kuliah hari {hari_nama}. Tambahkan di menu Jadwal Kuliah.")
+    else:
+        catat = {a["id_matakuliah"]: a for a in db.absensi_by_tanggal(tgl_cepat.isoformat())}
+        for j in jdwl:
+            sub = j["kode"] or "-"
+            if j["ruang"]:
+                sub += f" · {j['ruang']}"
+            ada = catat.get(j["id_matakuliah"])
+            c1, c2, c3 = st.columns([1.2, 2.9, 1.5])
+            c1.markdown(f"**{j['jam_mulai'] or '-'}**")
+            c2.markdown(
+                f"**{j['matakuliah']}**<br><small class='absen-sub'>{sub}</small>",
+                unsafe_allow_html=True,
+            )
+            if ada:
+                c3.markdown(
+                    f'<span class="tbl-badge" style="color:{_WARNA_STATUS.get(ada["status"], "#94a3b8")}">'
+                    f'{ada["status"]}</span>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                c3.markdown(
+                    '<span class="tbl-badge" style="color:#94a3b8">Belum</span>',
+                    unsafe_allow_html=True,
+                )
+            kb = st.columns(4)
+            for stt, kol in zip(db.STATUS_ABSEN, kb):
+                kunci = f"ck_{j['id_matakuliah']}_{stt}_{tgl_cepat.isoformat()}"
+                dis = ada is not None and ada["status"] == stt
+                if kol.button(
+                    stt, width="stretch", key=kunci, disabled=dis,
+                ):
+                    db.set_absensi(j["id_matakuliah"], tgl_cepat.isoformat(), stt)
+                    st.session_state["flash"] = (
+                        f"{j['matakuliah']} · {hari_nama} {tgl_cepat.isoformat()} → {stt} ✔"
+                    )
+                    sync.push()
+                    st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     labels = [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_list]
     lbl = st.selectbox("Pilih Matakuliah", labels)

@@ -177,7 +177,7 @@ def delete_jadwal(jid):
     save_data(data)
 
 
-def jadwal_list():
+def jadwal_list(hari=None):
     data = load_data()
     mhs = {m["id"]: m for m in data["matakuliah"]}
     rows = []
@@ -185,9 +185,12 @@ def jadwal_list():
         m = mhs.get(j["id_matakuliah"])
         if not m:
             continue
+        if hari and j["hari"] != hari:
+            continue
         rows.append(
             {
                 "id": j["id"],
+                "id_matakuliah": j["id_matakuliah"],
                 "matakuliah": m["nama"],
                 "kode": m["kode"],
                 "dosen": m["dosen"],
@@ -225,10 +228,47 @@ def add_absensi(id_matakuliah, tanggal, status, catatan):
     return True
 
 
+def set_absensi(id_matakuliah, tanggal, status, catatan=""):
+    """Tambah absen, atau ganti status jika absen sudah ada (untuk tanggal yang sama)."""
+    data = load_data()
+    for a in data["absensi"]:
+        if a["id_matakuliah"] == id_matakuliah and a["tanggal"] == tanggal:
+            a["status"] = status
+            if catatan:
+                a["catatan"] = catatan
+            save_data(data)
+            return True
+    a = {
+        "id": _next_id(data["absensi"]),
+        "id_matakuliah": id_matakuliah,
+        "tanggal": tanggal,
+        "status": status,
+        "catatan": catatan or "",
+    }
+    data["absensi"].append(a)
+    save_data(data)
+    return True
+
+
 def delete_absensi(aid):
     data = load_data()
     data["absensi"] = [a for a in data["absensi"] if a["id"] != aid]
     save_data(data)
+
+
+def absensi_by_tanggal(tanggal):
+    data = load_data()
+    return [
+        {
+            "id": a["id"],
+            "id_matakuliah": a["id_matakuliah"],
+            "tanggal": a["tanggal"],
+            "status": a["status"],
+            "catatan": a["catatan"],
+        }
+        for a in data["absensi"]
+        if a["tanggal"] == tanggal
+    ]
 
 
 def absensi_list(id_matakuliah=None):
