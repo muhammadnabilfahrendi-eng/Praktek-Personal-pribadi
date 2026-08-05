@@ -15,6 +15,9 @@ try:
 except Exception:  # pragma: no cover
     Styler = None
 
+# Penanda proses: sinkronisasi cloud cukup sekali (lihat blok "Utama").
+_SYNC_DONE = {}
+
 
 def _norm_jam(s):
     """Terima '10:10', '10.10', atau '1010' -> '10:10'; None kalau tidak valid."""
@@ -620,7 +623,9 @@ PAGE_TITLES = {
     "Absen": ("Absen", "Catat kehadiranmu setiap masuk kelas."),
     "Tugas Harian": ("Tugas Harian", "Tugas harian yang kamu buat."),
     "UTS & UAS": ("UTS & UAS", "Jadwal, nilai, dan status ujian."),
-    "Kelola Akun": ("Kelola Akun", "Kelola akun user dan datanya (khusus admin)."),
+    "Kelola Akun": ("Kelola Akun", "Kelola akun user, sandi, dan periode jadwal (khusus admin)."),
+    "Tugas Massal": ("Tugas Massal", "Tambah tugas ke banyak akun sekaligus (khusus admin)."),
+    "Data Mahasiswa": ("Data Mahasiswa", "Lihat dan kelola data akun terpilih (khusus admin)."),
 }
 
 
@@ -862,8 +867,9 @@ def page_dashboard():
 
 # ---------- Jadwal Kuliah ----------
 
-def page_jadwal():
-    page_header(*PAGE_TITLES["Jadwal Kuliah"])
+def page_jadwal(head=True):
+    if head:
+        page_header(*PAGE_TITLES["Jadwal Kuliah"])
     flash()
 
     tgl_ini = _now_wib().date()
@@ -889,7 +895,7 @@ def page_jadwal():
             hari = c5.selectbox("Hari", db.HARI, key=f"hari_mk_{ver}")
             ruang = c6.text_input("Ruang", key=f"ruang_mk_{ver}")
             st.caption("Jam selesai diisi manual sesuai jadwal kampus.")
-            if st.button("Simpan", type="primary", width="stretch"):
+            if st.button("Simpan", type="primary", width="stretch", key=f"jdwl_simpan_{ver}"):
                 jm = jam_masuk
                 js = jam_selesai
                 if not nama.strip():
@@ -934,7 +940,7 @@ def page_jadwal():
         if sel:
             jid = jdwl[pos]["id"]
             if _is_admin:
-                if st.button("Hapus Jadwal", width="stretch"):
+                if st.button("Hapus Jadwal", width="stretch", key="jdwl_hapus"):
                     hapus_dialog(f"jadwal {sel['Matakuliah']} {sel['Hari']} {sel['Mulai']}", lambda: db.delete_jadwal(_user, jid))
             else:
                 st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
@@ -957,7 +963,7 @@ def page_jadwal():
             mid_sel = mk_list[posm]["id"]
             st.caption("Menghapus matakuliah ikut menghapus jadwal, absen, dan tugasnya.")
             if _is_admin:
-                if st.button("Hapus Matakuliah", width="stretch"):
+                if st.button("Hapus Matakuliah", width="stretch", key="mk_hapus"):
                     hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(_user, mid_sel))
             else:
                 st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
@@ -968,8 +974,9 @@ def page_jadwal():
 
 # ---------- Absen ----------
 
-def page_absen():
-    page_header(*PAGE_TITLES["Absen"])
+def page_absen(head=True):
+    if head:
+        page_header(*PAGE_TITLES["Absen"])
     flash()
 
     mk_list = db.matakuliah_list(_user)
@@ -1055,7 +1062,7 @@ def page_absen():
         sesi = db.absen_sesi_aktif(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
         if sesi:
             st.caption(f"Sesi aktif: **{sesi['matakuliah']}**{' (batas ' + sesi['batas'] + ')' if sesi['batas'] else ''} — user sudah dapat notifikasi.")
-            if st.button("Tutup Absensi", width="stretch"):
+            if st.button("Tutup Absensi", width="stretch", key="absen_tutup"):
                 db.tutup_absen(_user)
                 st.session_state["flash"] = f"Sesi absensi '{sesi['matakuliah']}' ditutup."
                 sync.push()
@@ -1069,7 +1076,7 @@ def page_absen():
                 batas_tgl = st.date_input("Batas absen (tanggal)", value=date.today())
             with c2:
                 batas_jam = _time_picker_ui("Batas absen (jam)", "23:55", "adm_buka_jam")
-            if st.button("Buka Absensi", type="primary", width="stretch"):
+            if st.button("Buka Absensi", type="primary", width="stretch", key="absen_buka"):
                 if not batas_jam:
                     st.error("Jam batas absen wajib diisi.")
                 else:
@@ -1132,7 +1139,7 @@ def page_absen():
                 for j, w in zip(jdwl_mk, win_mk) if w[0] != "aktif"
             )
             st.warning(f"Window absen {m['nama']} hari ini sedang tidak terbuka. {rincian}")
-        if st.button("Simpan", type="primary", width="stretch", disabled=not boleh):
+        if st.button("Simpan", type="primary", width="stretch", disabled=not boleh, key=f"absen_simpan_{ab_ver}"):
             ok = db.add_absensi(
                 _user, m["id"], tanggal.isoformat(), status, catatan.strip()
             )
@@ -1154,7 +1161,7 @@ def page_absen():
         if sel:
             aid = rows[pos]["id"]
             if _is_admin:
-                if st.button("Hapus Absen", width="stretch"):
+                if st.button("Hapus Absen", width="stretch", key="absen_hapus"):
                     hapus_dialog(f"absen {sel['Tanggal']} ({sel['Status']})", lambda: db.delete_absensi(_user, aid))
             else:
                 st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
@@ -1227,13 +1234,14 @@ def edit_tugas(t, tid, user):
             st.rerun()
 
 
-def page_tugas(tipe_filter):
+def page_tugas(tipe_filter, head=True):
     is_ujian = tipe_filter is None
     tipe_nama = "UTS/UAS" if is_ujian else "Tugas Harian"
-    page_header(
-        "UTS & UAS" if is_ujian else "Tugas Harian",
-        "Catat tugas " + ("ujian" if is_ujian else "harian") + " yang kamu buat.",
-    )
+    if head:
+        page_header(
+            "UTS & UAS" if is_ujian else "Tugas Harian",
+            "Catat tugas " + ("ujian" if is_ujian else "harian") + " yang kamu buat.",
+        )
     flash()
 
     mk_list = db.matakuliah_list(_user)
@@ -1242,28 +1250,29 @@ def page_tugas(tipe_filter):
         return
 
     tgs_ver = st.session_state.get("_tgs_ver", 0)
+    ukey = tgs_ver * 2 + (1 if is_ujian else 0)
     with st.expander("Tambah Tugas", expanded=True):
-        with st.form("frm_tgs"):
+        with st.form(f"frm_tgs_{ukey}"):
             mk = st.selectbox(
                 "Matakuliah",
                 [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_list],
-                key=f"tgs_mk_{tgs_ver}",
+                key=f"tgs_mk_{ukey}",
             )
             c1, c2 = st.columns(2)
             if is_ujian:
-                tipe = c1.selectbox("Tipe", ["UTS", "UAS"], key=f"tgs_tipe_{tgs_ver}")
+                tipe = c1.selectbox("Tipe", ["UTS", "UAS"], key=f"tgs_tipe_{ukey}")
             else:
                 tipe = "Harian"
             d1, d2 = c2.columns(2)
-            deadline = d1.date_input("Deadline", value=date.today(), key=f"tgs_dl_{tgs_ver}")
+            deadline = d1.date_input("Deadline", value=date.today(), key=f"tgs_dl_{ukey}")
             with d2:
-                jam_dl = _time_picker_ui("Pukul", "23:55", f"tgs_pick_jam_{tgs_ver}")
-            judul = st.text_input("Judul", key=f"tgs_judul_{tgs_ver}")
-            deskripsi = st.text_area("Deskripsi (opsional)", key=f"tgs_desk_{tgs_ver}")
+                jam_dl = _time_picker_ui("Pukul", "23:55", f"tgs_pick_jam_{ukey}")
+            judul = st.text_input("Judul", key=f"tgs_judul_{ukey}")
+            deskripsi = st.text_area("Deskripsi (opsional)", key=f"tgs_desk_{ukey}")
             c3, c4 = st.columns(2)
-            status = c3.selectbox("Status", db.STATUS_TUGAS, key=f"tgs_status_{tgs_ver}")
-            nilai = c4.number_input("Nilai (jika sudah dinilai)", min_value=0.0, max_value=100.0, value=0.0, key=f"tgs_nilai_{tgs_ver}")
-            submitted = st.form_submit_button("Simpan", type="primary", width="stretch")
+            status = c3.selectbox("Status", db.STATUS_TUGAS, key=f"tgs_status_{ukey}")
+            nilai = c4.number_input("Nilai (jika sudah dinilai)", min_value=0.0, max_value=100.0, value=0.0, key=f"tgs_nilai_{ukey}")
+            submitted = st.form_submit_button("Simpan", type="primary", width="stretch", key=f"tgs_simpan_{ukey}")
         if submitted:
             if not judul.strip():
                 st.error("Judul wajib diisi.")
@@ -1291,7 +1300,7 @@ def page_tugas(tipe_filter):
     st.markdown("Filter status:", unsafe_allow_html=True)
     f_status = st.segmented_control(
         "f_status", ["Semua", "Belum", "Terlambat", "Diserahkan"], default="Semua",
-        key="filt_tugas", label_visibility="collapsed",
+        key=f"filt_tugas_{ukey}", label_visibility="collapsed",
     )
 
     rows = db.tugas_list(_user, tipe=tipe_filter)
@@ -1398,7 +1407,7 @@ def page_kelola():
         c1, c2 = st.columns(2)
         with c1:
             nama_baru = st.text_input("Nama baru", key="k_nama_baru")
-            if st.button("Ubah Nama", width="stretch"):
+            if st.button("Ubah Nama", width="stretch", key="kelola_ubah_nama"):
                 hasil = db.ubah_nama(target_nim, nama_baru)
                 if hasil == "ok":
                     st.session_state["flash"] = f"Nama akun '{target}' diubah menjadi '{nama_baru.strip()}'."
@@ -1407,7 +1416,7 @@ def page_kelola():
                     st.error(hasil)
         with c2:
             sandi_baru = st.text_input("Password baru (kosongkan = NIM)", type="password", key="k_sandi_baru")
-            if st.button("Reset Sandi", width="stretch"):
+            if st.button("Reset Sandi", width="stretch", key="kelola_reset"):
                 pw = sandi_baru.strip() or target_nim
                 if len(pw) < 4:
                     st.error("Password minimal 4 karakter.")
@@ -1420,8 +1429,98 @@ def page_kelola():
                     else:
                         st.error(hasil)
         st.caption("Reset sandi tidak memerlukan jawaban keamanan — admin punya akses penuh.")
-        if st.button("Hapus Akun", type="secondary", width="stretch"):
+        if st.button("Hapus Akun", type="secondary", width="stretch", key="kelola_hapus"):
             hapus_dialog(f"akun '{target}' beserta seluruh datanya", lambda: db.delete_akun(target))
+
+
+# ---------- Tugas Massal (admin) ----------
+
+def page_tugas_massal():
+    page_header(*PAGE_TITLES["Tugas Massal"])
+    flash()
+
+    rows = db.akun_list()
+    if not rows:
+        st.info("Belum ada akun user terdaftar.")
+        return
+
+    labels_akun = [f"{r['username']} ({r['nim']})" for r in rows]
+    pilih = st.multiselect("Pilih akun", labels_akun)
+    dipilih = [rows[labels_akun.index(l)] for l in pilih]
+
+    nama_mk_set = {}
+    for r in dipilih:
+        for m in db.data_user(r["username"])["matakuliah"]:
+            nama_mk_set.setdefault(m["nama"].strip().lower(), m["nama"].strip())
+    if not dipilih:
+        st.caption("Belum ada akun dipilih — pilih akun dulu untuk melihat daftar matakuliah.")
+        return
+
+    mk_labels = list(nama_mk_set.values())
+    if not mk_labels:
+        st.warning("Akun terpilih belum punya matakuliah — tambahkan dulu lewat Data Mahasiswa → Jadwal Kuliah.")
+        return
+    mk_pilih = st.selectbox("Matakuliah", mk_labels)
+
+    tgs_ver = st.session_state.get("_ms_ver", 0)
+    with st.form("frm_massal"):
+        c1, c2 = st.columns(2)
+        tipe = c1.selectbox("Tipe", ["Harian", "UTS", "UAS"], key=f"ms_tipe_{tgs_ver}")
+        d1, d2 = c2.columns(2)
+        deadline = d1.date_input("Deadline", value=date.today(), key=f"ms_dl_{tgs_ver}")
+        with d2:
+            jam_dl = _time_picker_ui("Pukul", "23:55", f"ms_pick_jam_{tgs_ver}")
+        judul = st.text_input("Judul", key=f"ms_judul_{tgs_ver}")
+        deskripsi = st.text_area("Deskripsi (opsional)", key=f"ms_desk_{tgs_ver}")
+        c3, c4 = st.columns(2)
+        status = c3.selectbox("Status", db.STATUS_TUGAS, key=f"ms_status_{tgs_ver}")
+        nilai = c4.number_input("Nilai (jika sudah dinilai)", min_value=0.0, max_value=100.0, value=0.0, key=f"ms_nilai_{tgs_ver}")
+        kirim = st.form_submit_button(
+            f"Kirim ke {len(dipilih)} Akun", type="primary", width="stretch",
+            key=f"ms_kirim_{tgs_ver}",
+        )
+    if kirim:
+        if not judul.strip():
+            st.error("Judul wajib diisi.")
+        elif not jam_dl:
+            st.error("Pukul wajib diisi.")
+        else:
+            dl = datetime.combine(deadline, datetime.strptime(jam_dl, "%H:%M").time()).strftime("%Y-%m-%d %H:%M")
+            ok, skip = db.add_tugas_batch(
+                [r["username"] for r in dipilih], mk_pilih, tipe, judul.strip(),
+                deskripsi.strip(), dl, status, nilai if nilai else None,
+            )
+            for u in ok:
+                db.tambah_notifikasi(u, f"Tugas {tipe} '{judul.strip()}' ditambahkan oleh admin.", "tugas")
+            if ok:
+                sync.push()
+            pesan = f"Tugas {tipe} '{judul.strip()}' dikirim ke {len(ok)} akun."
+            if skip:
+                pesan += f" Dilewati {len(skip)} akun (tidak punya matakuliah '{mk_pilih}'): {', '.join(skip)}."
+            st.session_state["flash"] = pesan
+            st.session_state["_ms_ver"] = tgs_ver + 1
+            st.rerun()
+
+
+# ---------- Data Mahasiswa (admin) ----------
+
+def page_data_mahasiswa():
+    page_header(*PAGE_TITLES["Data Mahasiswa"])
+    flash()
+
+    if not _user:
+        st.info("Belum ada akun user — daftarkan dulu lewat halaman login.")
+        return
+    st.caption(f"Data akun: **{_user}** — pilih akun lain di sidebar 'Lihat data akun'.")
+    tabs = st.tabs(["Jadwal Kuliah", "Absen", "Tugas Harian", "UTS & UAS"])
+    with tabs[0]:
+        page_jadwal(head=False)
+    with tabs[1]:
+        page_absen(head=False)
+    with tabs[2]:
+        page_tugas("Harian", head=False)
+    with tabs[3]:
+        page_tugas(None, head=False)
 
 
 # ---------- Login ----------
@@ -1586,9 +1685,17 @@ def page_login():
 
 # ---------- Utama ----------
 
-if "synced_once" not in st.session_state:
-    sync.pull()
-    st.session_state["synced_once"] = True
+# Sinkronisasi cloud dilakukan SEKALI per proses aplikasi, bukan per sesi.
+# Di Streamlit Cloud setiap reload membuka sesi baru; kalau pull() jalan tiap
+# sesi, halaman bisa macet lama menunggu GitHub. Pakai penanda proses + timeout
+# pendek agar halaman tidak pernah menggantung.
+if not _SYNC_DONE.get("done"):
+    try:
+        sync.pull()
+    except Exception:
+        sync.STATUS["mode"] = "error"
+        sync.STATUS["pesan"] = "Sinkronisasi cloud bermasalah - lanjut mode lokal."
+    _SYNC_DONE["done"] = True
 
 if not st.session_state.get("logged_in"):
     page_login()
@@ -1623,7 +1730,9 @@ if _is_admin:
 else:
     _user = _nama
 
-_menu = PAGE_TITLES if _is_admin else {k: v for k, v in PAGE_TITLES.items() if k != "Kelola Akun"}
+_MENU_ADMIN = ["Dashboard", "Kelola Akun", "Tugas Massal", "Data Mahasiswa"]
+_MENU_USER = ["Dashboard", "Jadwal Kuliah", "Absen", "Tugas Harian", "UTS & UAS"]
+_menu = _MENU_ADMIN if _is_admin else _MENU_USER
 page = st.sidebar.radio("Menu", list(_menu), label_visibility="collapsed")
 
 if st.sidebar.button("Keluar", width="stretch"):
@@ -1650,6 +1759,10 @@ elif page == "UTS & UAS":
     page_tugas(None)
 elif page == "Kelola Akun":
     page_kelola()
+elif page == "Tugas Massal":
+    page_tugas_massal()
+elif page == "Data Mahasiswa":
+    page_data_mahasiswa()
 
 st.sidebar.markdown(
     '<div class="sidebar-foot">Aplikasi pribadi — data tersimpan otomatis.</div>',

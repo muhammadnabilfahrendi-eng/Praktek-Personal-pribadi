@@ -664,6 +664,36 @@ def add_tugas(user, id_matakuliah, tipe, judul, deskripsi, deadline, status, nil
     return t["id"]
 
 
+def add_tugas_batch(users, mk_nama, tipe, judul, deskripsi, deadline, status, nilai):
+    """Tambahkan tugas yang sama ke banyak akun. Matakuliah dicocokkan berdasarkan nama
+    (case-insensitive) di data tiap akun. Kembalikan (ditambahkan, dilewati)."""
+    ok, skip = [], []
+    for u in users:
+        data = data_user(u)
+        m = next(
+            (x for x in data["matakuliah"] if x["nama"].strip().lower() == mk_nama.strip().lower()),
+            None,
+        )
+        if not m:
+            skip.append(u)
+            continue
+        t = {
+            "id": _next_id(data["tugas"]),
+            "id_matakuliah": m["id"],
+            "tipe": tipe,
+            "judul": judul,
+            "deskripsi": deskripsi or "",
+            "deadline": deadline or "",
+            "status": status,
+            "tanggal_selesai": "",
+            "nilai": nilai,
+        }
+        data["tugas"].append(t)
+        save_user(u, data)
+        ok.append(u)
+    return ok, skip
+
+
 def update_tugas(user, tid, judul=None, deskripsi=None, deadline=None,
                  status=None, tanggal_selesai=None, nilai=None):
     data = data_user(user)
