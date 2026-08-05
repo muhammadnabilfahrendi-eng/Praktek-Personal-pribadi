@@ -6,6 +6,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 DATA_FILE = BASE / "data" / "catatan.json"
 LOGIN_FILE = BASE / "data" / "login.json"
+ADMIN_FILE = BASE / "data" / "admin.json"
 
 HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 STATUS_ABSEN = ["Hadir", "Alpa", "Izin", "Sakit"]
@@ -49,7 +50,7 @@ def _hash_pw(pw):
 
 
 def _login_all():
-    """Semua akun (list). Format lama (dict tunggal) otomatis dimigrasi ke list."""
+    """Semua akun user (list). Format lama (dict tunggal) otomatis dimigrasi ke list."""
     if not LOGIN_FILE.exists():
         return []
     try:
@@ -62,12 +63,13 @@ def _login_all():
                 "username": d.get("username", ""),
                 "nim": d.get("nim", ""),
                 "pass_hash": d.get("pass_hash", ""),
-                "admin": True,
             }
         ]
         _save_login_all(akun)
         return akun
     if isinstance(d, list):
+        for a in d:
+            a.pop("admin", None)
         return d
     return []
 
@@ -79,12 +81,57 @@ def _save_login_all(akun):
     )
 
 
+def _admin_all():
+    """Kredensial admin (dict) atau None jika belum dibuat."""
+    if not ADMIN_FILE.exists():
+        return None
+    try:
+        d = json.loads(ADMIN_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if isinstance(d, dict) and d.get("pass_hash"):
+        return d
+    return None
+
+
+def _save_admin(d):
+    ADMIN_FILE.parent.mkdir(exist_ok=True)
+    ADMIN_FILE.write_text(
+        json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def admin_exists():
+    return _admin_all() is not None
+
+
+def create_admin_login(password):
+    """Buat kredensial admin (pertama kali saja). Kembalikan 'ok' atau pesan kesalahan."""
+    if admin_exists():
+        return "Admin sudah terdaftar"
+    _save_admin({"username": "admin", "pass_hash": _hash_pw(password)})
+    return "ok"
+
+
+def check_admin(username, password):
+    """Kembalikan dict akun admin jika cocok, selain itu None."""
+    a = _admin_all()
+    if not a:
+        return None
+    if (
+        a.get("username", "").strip().lower() == username.strip().lower()
+        and a.get("pass_hash") == _hash_pw(password)
+    ):
+        return {"username": a["username"], "nim": "", "admin": True}
+    return None
+
+
 def login_exists():
     return LOGIN_FILE.exists()
 
 
 def create_login(username, nim, password):
-    """Daftar akun baru. Kembalikan 'ok' atau pesan kesalahan (Nama/NIM sudah terpakai)."""
+    """Daftar akun user baru. Kembalikan 'ok' atau pesan kesalahan (Nama/NIM sudah terpakai)."""
     akun = _login_all()
     uname = username.strip()
     unim = nim.strip()
@@ -98,7 +145,6 @@ def create_login(username, nim, password):
             "username": uname,
             "nim": unim,
             "pass_hash": _hash_pw(password),
-            "admin": len(akun) == 0,
         }
     )
     _save_login_all(akun)
@@ -106,7 +152,7 @@ def create_login(username, nim, password):
 
 
 def check_login(username, password):
-    """Kembalikan dict akun jika cocok, selain itu None."""
+    """Kembalikan dict akun user jika cocok, selain itu None."""
     for a in _login_all():
         if (
             a.get("username", "").strip().lower() == username.strip().lower()
@@ -117,10 +163,10 @@ def check_login(username, password):
 
 
 def is_admin(username):
-    for a in _login_all():
-        if a.get("username", "").strip().lower() == username.strip().lower():
-            return bool(a.get("admin"))
-    return False
+    a = _admin_all()
+    return bool(
+        a and a.get("username", "").strip().lower() == username.strip().lower()
+    )
 
 
 # ---------- Matakuliah ----------

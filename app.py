@@ -1242,8 +1242,45 @@ def page_login():
         unsafe_allow_html=True,
     )
     col = st.columns([1, 1, 1])[1]
+    tab = col.radio("Login sebagai", ["User", "Admin"], horizontal=True, label_visibility="collapsed")
+    if tab == "Admin":
+        if not db.admin_exists():
+            col.info("Belum ada admin. Buat password admin dulu (pertama kali).")
+            with col.form("frm_buat_admin"):
+                p1 = st.text_input("Password Admin", type="password")
+                p2 = st.text_input("Ulangi Password", type="password")
+                buat = st.form_submit_button("Buat Admin", type="primary", width="stretch")
+            if buat:
+                if not p1:
+                    col.error("Password wajib diisi.")
+                elif len(p1) < 4:
+                    col.error("Password minimal 4 karakter.")
+                elif p1 != p2:
+                    col.error("Password tidak sama.")
+                else:
+                    hasil = db.create_admin_login(p1)
+                    if hasil == "ok":
+                        col.success("Admin dibuat. Silakan masuk dengan username **admin**.")
+                        st.rerun()
+                    else:
+                        col.error(hasil)
+        else:
+            with col.form("frm_login_admin"):
+                u = st.text_input("Username", value="admin")
+                p = st.text_input("Password", type="password")
+                masuk = st.form_submit_button("Masuk Admin", type="primary", width="stretch")
+            if masuk:
+                akun = db.check_admin(u.strip(), p)
+                if akun:
+                    st.session_state["logged_in"] = True
+                    st.session_state["username"] = akun["username"]
+                    st.session_state["akun"] = akun
+                    st.rerun()
+                else:
+                    col.error("Username atau password admin salah.")
+        return
     if not db.login_exists():
-        col.info("Buat akun dulu (pertama kali). Akun pertama otomatis menjadi **Admin**.")
+        col.info("Buat akun dulu (pertama kali).")
         with col.form("frm_buat_akun"):
             u = st.text_input("Nama Lengkap")
             p1 = st.text_input("NIM (Password)", type="password")
