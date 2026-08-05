@@ -946,6 +946,7 @@ def page_jadwal(head=True):
                 if st.button("Hapus Jadwal", width="stretch", key="jdwl_hapus"):
                     hapus_dialog(f"jadwal {sel['Matakuliah']} {sel['Hari']} {sel['Mulai']}", lambda: db.delete_jadwal(_user, jid))
         else:
+            tabel_html(df, height=300)
             st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
         st.info("Belum ada jadwal.")
@@ -969,6 +970,7 @@ def page_jadwal(head=True):
                 if st.button("Hapus Matakuliah", width="stretch", key="mk_hapus"):
                     hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(_user, mid_sel))
         else:
+            tabel_html(dfm, height=260)
             st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
         st.info("Belum ada matakuliah.")
