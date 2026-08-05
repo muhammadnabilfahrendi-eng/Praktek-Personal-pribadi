@@ -138,6 +138,20 @@
     render();
   }
 
+  function clamp(v, max) { return Math.max(0, Math.min(v, max)); }
+
+  function commitBuf() {
+    const max = st.active === 'hh' ? 23 : 59;
+    st[st.active] = clamp(parseInt(st.buf, 10), max);
+    st.buf = '';
+    send();
+    if (st.active === 'hh') {
+      setActive('mm');
+    } else {
+      render();
+    }
+  }
+
   function setActive(part) {
     st.active = part;
     st.buf = '';
@@ -166,21 +180,17 @@
       if (!st.active) st.active = 'hh';
       st.buf += e.key;
       if (st.buf.length >= 2) {
-        st[st.active] = parseInt(st.buf, 10);
-        st.buf = '';
-        send();
+        commitBuf();
+      } else {
+        render();
       }
-      render();
     } else if (e.key === 'Backspace') {
       e.preventDefault();
       if (st.buf) { st.buf = ''; render(); }
       else if (st.active) { setActive(null); }
     } else if (e.key === 'Enter' && st.buf) {
       e.preventDefault();
-      st[st.active] = parseInt(st.buf, 10);
-      st.buf = '';
-      send();
-      render();
+      commitBuf();
     }
   });
 
