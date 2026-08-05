@@ -1266,6 +1266,7 @@ def page_kelola():
 # ---------- Login ----------
 
 def page_login():
+    db.ensure_admin_default()
     st.markdown(
         '<div class="login-card">'
         '<div class="user-avatar login-avatar">NF</div>'
@@ -1275,44 +1276,15 @@ def page_login():
         unsafe_allow_html=True,
     )
     col = st.columns([1, 1, 1])[1]
-    tab = col.radio("Login sebagai", ["User", "Admin"], horizontal=True, label_visibility="collapsed")
-    if tab == "Admin":
-        if not db.admin_exists():
-            col.info("Belum ada admin. Buat password admin dulu (pertama kali).")
-            with col.form("frm_buat_admin"):
-                p1 = st.text_input("Password Admin", type="password")
-                p2 = st.text_input("Ulangi Password", type="password")
-                buat = st.form_submit_button("Buat Admin", type="primary", width="stretch")
-            if buat:
-                if not p1:
-                    col.error("Password wajib diisi.")
-                elif len(p1) < 4:
-                    col.error("Password minimal 4 karakter.")
-                elif p1 != p2:
-                    col.error("Password tidak sama.")
-                else:
-                    hasil = db.create_admin_login(p1)
-                    if hasil == "ok":
-                        col.success("Admin dibuat. Silakan masuk dengan username **admin**.")
-                        st.rerun()
-                    else:
-                        col.error(hasil)
-        else:
-            with col.form("frm_login_admin"):
-                u = st.text_input("Username", value="admin")
-                p = st.text_input("Password", type="password")
-                masuk = st.form_submit_button("Masuk Admin", type="primary", width="stretch")
-            if masuk:
-                akun = db.check_admin(u.strip(), p)
-                if akun:
-                    st.session_state["logged_in"] = True
-                    st.session_state["username"] = akun["username"]
-                    st.session_state["akun"] = akun
-                    st.rerun()
-                else:
-                    col.error("Username atau password admin salah.")
-        return
+
+    _pesan = st.session_state.pop("_pesan", None)
+    if _pesan:
+        col.success(_pesan)
+
+    mode = st.session_state.get("_hal", "masuk")
+
     if not db.login_exists():
+        # Pertama kali: buat akun (form ditampilkan di atas form login)
         col.info("Buat akun dulu (pertama kali).")
         with col.form("frm_buat_akun"):
             u = st.text_input("Nama Lengkap")
@@ -1329,47 +1301,58 @@ def page_login():
             else:
                 hasil = db.create_login(u.strip(), p1, p1)
                 if hasil == "ok":
-                    col.success(f"Akun '{u.strip()}' dibuat. Silakan masuk.")
+                    st.session_state["_pesan"] = f"Akun '{u.strip()}' dibuat. Silakan masuk."
                     st.rerun()
                 else:
                     col.error(hasil)
-    else:
-        daftar = col.toggle("Daftar akun baru", key="tgl_daftar")
-        if daftar:
-            col.caption("Nama dan NIM harus berbeda dari akun yang sudah ada.")
-            with col.form("frm_buat_akun2"):
-                u = st.text_input("Nama Lengkap")
-                p1 = st.text_input("NIM (Password)", type="password")
-                p2 = st.text_input("Ulangi NIM", type="password")
-                buat = st.form_submit_button("Daftar", type="primary", width="stretch")
-            if buat:
-                if not u.strip() or not p1:
-                    col.error("Nama lengkap dan NIM wajib diisi.")
-                elif p1 != p2:
-                    col.error("NIM tidak sama.")
-                elif len(p1) < 4:
-                    col.error("NIM minimal 4 karakter.")
-                else:
-                    hasil = db.create_login(u.strip(), p1, p1)
-                    if hasil == "ok":
-                        col.success(f"Akun '{u.strip()}' berhasil didaftarkan. Silakan masuk.")
-                        st.rerun()
-                    else:
-                        col.error(hasil)
-        else:
-            with col.form("frm_login"):
-                u = st.text_input("Nama Lengkap")
-                p = st.text_input("NIM (Password)", type="password")
-                masuk = st.form_submit_button("Masuk", type="primary", width="stretch")
-            if masuk:
-                akun = db.check_login(u.strip(), p)
-                if akun:
-                    st.session_state["logged_in"] = True
-                    st.session_state["username"] = akun["username"]
-                    st.session_state["akun"] = akun
+
+    elif mode == "daftar":
+        # Daftar akun baru (diakses lewat tombol di bawah form login)
+        col.caption("Nama dan NIM harus berbeda dari akun yang sudah ada.")
+        with col.form("frm_buat_akun"):
+            u = st.text_input("Nama Lengkap")
+            p1 = st.text_input("NIM (Password)", type="password")
+            p2 = st.text_input("Ulangi NIM", type="password")
+            buat = st.form_submit_button("Daftar", type="primary", width="stretch")
+        if buat:
+            if not u.strip() or not p1:
+                col.error("Nama lengkap dan NIM wajib diisi.")
+            elif p1 != p2:
+                col.error("NIM tidak sama.")
+            elif len(p1) < 4:
+                col.error("NIM minimal 4 karakter.")
+            else:
+                hasil = db.create_login(u.strip(), p1, p1)
+                if hasil == "ok":
+                    st.session_state["_pesan"] = f"Akun '{u.strip()}' berhasil didaftarkan. Silakan masuk."
+                    st.session_state["_hal"] = "masuk"
                     st.rerun()
                 else:
-                    col.error("Nama atau NIM salah.")
+                    col.error(hasil)
+        if col.button("← Kembali ke login", width="stretch", type="tertiary"):
+            st.session_state["_hal"] = "masuk"
+            st.rerun()
+        return
+
+    # Form login (admin dikenali dari username 'admin', tidak ditampilkan)
+    with col.form("frm_login"):
+        u = st.text_input("Nama Lengkap")
+        p = st.text_input("NIM (Password)", type="password")
+        masuk = st.form_submit_button("Masuk", type="primary", width="stretch")
+    if masuk:
+        uname = u.strip()
+        akun = db.check_admin(uname, p) if uname.lower() == "admin" else db.check_login(uname, p)
+        if akun:
+            st.session_state["logged_in"] = True
+            st.session_state["username"] = akun["username"]
+            st.session_state["akun"] = akun
+            st.rerun()
+        else:
+            col.error("Nama atau NIM salah.")
+
+    if db.login_exists() and col.button("Daftar Akun Baru", width="stretch"):
+        st.session_state["_hal"] = "daftar"
+        st.rerun()
 
 
 # ---------- Utama ----------

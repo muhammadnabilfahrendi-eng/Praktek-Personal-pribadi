@@ -137,6 +137,12 @@ def admin_exists():
     return _admin_all() is not None
 
 
+def ensure_admin_default():
+    """Pastikan akun admin selalu ada (default: admin / admin)."""
+    if not admin_exists():
+        _save_admin({"username": "admin", "pass_hash": _hash_pw("admin")})
+
+
 def create_admin_login(password):
     """Buat kredensial admin (pertama kali saja). Kembalikan 'ok' atau pesan kesalahan."""
     if admin_exists():
@@ -167,6 +173,8 @@ def create_login(username, nim, password):
     akun = _login_all()
     uname = username.strip()
     unim = nim.strip()
+    if uname.lower() == "admin":
+        return "Nama 'admin' dicadangkan untuk admin."
     for a in akun:
         if a.get("username", "").strip().lower() == uname.lower():
             return "Nama sudah terdaftar"
