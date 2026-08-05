@@ -100,9 +100,13 @@ def _login_all():
         _save_login_all(akun)
         return akun
     if isinstance(d, list):
+        out = []
         for a in d:
+            if not isinstance(a, dict):
+                continue
             a.pop("admin", None)
-        return d
+            out.append(a)
+        return out
     return []
 
 
