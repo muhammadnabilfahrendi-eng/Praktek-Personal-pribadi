@@ -176,10 +176,10 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
 
 [data-testid="stTextInputRootElement"],
 [data-testid="stTextAreaRootElement"],
-[data-testid="stNumberInput"] [data-baseweb="input"],
-[data-testid="stDateInput"] [data-baseweb="input"],
-[data-testid="stTimeInput"] [data-baseweb="select"],
-[data-testid="stSelectbox"] [data-baseweb="select"] {
+[data-testid="stNumberInputContainer"],
+[data-testid="stDateInputField"] [data-baseweb="input"],
+[data-testid="stTimeInputTimeDisplay"],
+[data-testid="stSelectbox"] div:has(> input) {
     background: linear-gradient(180deg, rgba(148,184,255,.16), rgba(59,130,246,.09)) !important;
     border: 1px solid rgba(165,200,255,.22) !important;
     border-radius: 14px !important;
@@ -192,43 +192,43 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
 }
 [data-testid="stTextInputRootElement"]:hover,
 [data-testid="stTextAreaRootElement"]:hover,
-[data-testid="stNumberInput"] [data-baseweb="input"]:hover,
-[data-testid="stDateInput"] [data-baseweb="input"]:hover,
-[data-testid="stTimeInput"] [data-baseweb="select"]:hover,
-[data-testid="stSelectbox"] [data-baseweb="select"]:hover {
+[data-testid="stNumberInputContainer"]:hover,
+[data-testid="stDateInputField"] [data-baseweb="input"]:hover,
+[data-testid="stTimeInputTimeDisplay"]:hover,
+[data-testid="stSelectbox"] div:has(> input):hover {
     background: linear-gradient(180deg, rgba(148,184,255,.24), rgba(59,130,246,.15)) !important;
 }
 [data-testid="stTextInputRootElement"]:focus-within,
 [data-testid="stTextAreaRootElement"]:focus-within,
-[data-testid="stNumberInput"] [data-baseweb="input"]:focus-within,
-[data-testid="stDateInput"] [data-baseweb="input"]:focus-within,
-[data-testid="stTimeInput"] [data-baseweb="select"]:focus-within,
-[data-testid="stSelectbox"] [data-baseweb="select"]:focus-within {
+[data-testid="stNumberInputContainer"]:focus-within,
+[data-testid="stDateInputField"] [data-baseweb="input"]:focus-within,
+[data-testid="stTimeInputTimeDisplay"]:focus-within,
+[data-testid="stSelectbox"] div:has(> input):focus-within {
     background: linear-gradient(180deg, rgba(148,184,255,.2), rgba(59,130,246,.12)) !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 0 0 2px rgba(96,165,250,.35) !important;
 }
-[data-testid="stNumberInput"] [data-baseweb="base-input"],
+[data-testid="stNumberInputField"],
 [data-testid="stTextInput"] [data-baseweb="base-input"],
 [data-testid="stTextArea"] [data-baseweb="base-input"],
-[data-testid="stDateInput"] [data-baseweb="base-input"],
-[data-testid="stTimeInput"] [data-baseweb="select"] > div,
-[data-testid="stSelectbox"] [data-baseweb="select"] > div,
-[data-testid="stDateInputField"] {
+[data-testid="stDateInputField"] [data-baseweb="base-input"],
+[data-testid="stTimeInputTimeDisplay"] *,
+[data-testid="stSelectbox"] input {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
     color: #e2e8f0 !important;
 }
-[data-testid="stSelectbox"] [data-baseweb="select"] [role="button"],
+[data-testid="stSelectbox"] [role="button"],
 [data-testid="stDateInput"] [data-baseweb="input"] [role="button"],
-[data-testid="stTimeInput"] [data-baseweb="select"] [role="button"],
+[data-testid="stTimeInputClearButton"],
 [data-testid="stNumberInputStepUp"],
-[data-testid="stNumberInputStepDown"] {
+[data-testid="stNumberInputStepDown"],
+[data-testid="stNumberInputClearButton"] {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
 }
-[data-testid="stSelectbox"] [data-baseweb="popover"] [data-baseweb="menu"] {
+[data-testid="stSelectboxVirtualDropdown"] {
     background: rgba(22,35,60,.85) !important;
     border: 1px solid rgba(165,200,255,.18) !important;
     border-radius: 14px !important;
@@ -236,7 +236,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
     -webkit-backdrop-filter: blur(14px) !important;
     overflow: hidden;
 }
-[data-testid="stSelectbox"] [data-baseweb="popover"] [data-baseweb="menu"] [role="option"]:hover {
+[data-testid="stSelectboxVirtualDropdown"] [role="option"]:hover {
     background-color: rgba(59,130,246,.25) !important;
 }
 
