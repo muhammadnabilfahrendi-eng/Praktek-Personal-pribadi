@@ -41,7 +41,9 @@
 <body>
 <label id="lbl" for="tp"></label>
 <input type="time" id="tp" />
+<script src="component-lib.js"></script>
 <script>
+
   const input = document.getElementById('tp');
   const lbl = document.getElementById('lbl');
 
@@ -59,9 +61,9 @@
     Streamlit.setComponentValue(input.value || '');
   });
 
+  Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, (e) => apply(e.detail.args));
   Streamlit.setFrameHeight(64);
   Streamlit.setComponentReady();
-  Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, (e) => apply(e.detail.args));
 </script>
 </body>
 </html>
