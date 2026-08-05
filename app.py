@@ -175,7 +175,7 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
     border-right: 1px solid rgba(255,255,255,.10);
 }
 [data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
-.block-container { padding-top: 0.4rem; }
+.block-container { padding-top: 0.1rem; }
 [data-testid="stSidebar"] [role="radiogroup"] label {
     background: rgba(255,255,255,.06);
     border: 1px solid rgba(255,255,255,.12);
