@@ -654,7 +654,7 @@ def flash():
 
 
 _WARNA_STATUS = {
-    "Terlambat": "#f87171", "Belum": "#fbbf24", "Diserahkan": "#34d399",
+    "Terlambat": "#fbbf24", "Belum": "#f87171", "Diserahkan": "#34d399",
     "Hadir": "#34d399", "Alpa": "#f87171", "Izin": "#fbbf24", "Sakit": "#fbbf24",
 }
 
@@ -945,6 +945,8 @@ def page_jadwal(head=True):
                 jid = jdwl[pos]["id"]
                 if st.button("Hapus Jadwal", width="stretch", key="jdwl_hapus"):
                     hapus_dialog(f"jadwal {sel['Matakuliah']} {sel['Hari']} {sel['Mulai']}", lambda: db.delete_jadwal(_user, jid))
+        else:
+            st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
         st.info("Belum ada jadwal.")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -966,6 +968,8 @@ def page_jadwal(head=True):
                 st.caption("Menghapus matakuliah ikut menghapus jadwal, absen, dan tugasnya.")
                 if st.button("Hapus Matakuliah", width="stretch", key="mk_hapus"):
                     hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(_user, mid_sel))
+        else:
+            st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
         st.info("Belum ada matakuliah.")
     st.markdown("</div>", unsafe_allow_html=True)
