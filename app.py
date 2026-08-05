@@ -50,10 +50,18 @@ def _window_absen(j):
     now = _now_wib()
     if now < mulai:
         mnt = int((mulai - now).total_seconds() // 60) + 1
-        return "belum", f"bisa absen mulai {mulai.strftime('%H:%M')} (H-10 menit, {mnt} mnt lagi)"
+        return (
+            "belum",
+            f"bisa absen {mulai.strftime('%H:%M')} s/d {akhir.strftime('%H:%M')} "
+            f"(H-10 menit, {mnt} mnt lagi)",
+        )
     if now > akhir:
-        return "lewat", "window absen selesai (+1 jam setelah MK)"
-    return "aktif", ""
+        return (
+            "lewat",
+            f"absen sudah ditutup pukul {akhir.strftime('%H:%M')} "
+            "(H-10 menit s/d +1 jam setelah MK)",
+        )
+    return "aktif", f"ditutup pukul {akhir.strftime('%H:%M')}"
 
 st.set_page_config(page_title="Catatan Semester 5", layout="wide", initial_sidebar_state="expanded")
 
@@ -423,6 +431,11 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
     border-radius: 10px;
     color: #64748b;
     font-size: .78rem;
+}
+.absen-note {
+    color: #7f8ea3;
+    font-size: .78rem;
+    margin: -2px 0 8px 0;
 }
 
 [data-testid="stButton"] button[kind="primary"], [data-testid="stFormSubmitButton"] button[kind="primary"] {
@@ -873,6 +886,10 @@ def page_absen():
                         st.session_state["flash"] = f"{j['matakuliah']} · {hari_nama} → {stt} ✔"
                         sync.push()
                         st.rerun()
+                st.markdown(
+                    f'<div class="absen-note">Absen {ket}</div>',
+                    unsafe_allow_html=True,
+                )
             else:
                 st.markdown(
                     f'<div class="absen-lock">Locked · {ket}</div>',
@@ -920,7 +937,11 @@ def page_absen():
                 "saat MK berlangsung (H-10 menit sampai +1 jam setelah selesai)."
             )
         elif not boleh:
-            st.warning(f"Window absen {m['nama']} hari ini sedang tidak terbuka.")
+            rincian = " · ".join(
+                f"{j['jam_mulai']}-{j['jam_selesai']}: {w[1]}"
+                for j, w in zip(jdwl_mk, win_mk) if w[0] != "aktif"
+            )
+            st.warning(f"Window absen {m['nama']} hari ini sedang tidak terbuka. {rincian}")
         if st.button("Simpan", type="primary", width="stretch", disabled=not boleh):
             ok = db.add_absensi(
                 m["id"], tanggal.isoformat(), status, catatan.strip()
