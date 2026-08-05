@@ -72,14 +72,16 @@ def _window_absen(j):
     return "aktif", f"ditutup pukul {akhir.strftime('%H:%M')}", buka_ep, tutup_ep
 
 
-def _timer_html(uid, end_epoch, txt_awal, txt_selesai):
-    """Jam hitung mundur real-time (JS) sampai epoch habis, lalu jadi teks merah."""
-    tpl = """<div id="tm_{uid}" style="color:#7f8ea3;font-size:.78rem;margin-top:2px">
-<span id="tmx_{uid}">{txt_awal}</span></div>
+def _timer_html(uid, end_epoch, badge_html, txt_awal, txt_selesai):
+    """Badge status + jam hitung mundur real-time dalam satu baris (JS),
+    sampai epoch habis lalu berubah jadi teks merah."""
+    tpl = """<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;font-family:'Segoe UI',sans-serif">
+{badge}
+<span id="tmx_{uid}" style="color:#7f8ea3;font-size:.78rem">{txt_awal}</span>
+</div>
 <script>
 (function() {
   var end = {end} * 1000;
-  var el = document.getElementById('tm_{uid}');
   var tx = document.getElementById('tmx_{uid}');
   function p(n) { return (n < 10 ? '0' : '') + n; }
   function fmt(s) {
@@ -91,8 +93,8 @@ def _timer_html(uid, end_epoch, txt_awal, txt_selesai):
     var sisa = (end - Date.now()) / 1000;
     if (sisa <= 0) {
       tx.textContent = '{txt_selesai}';
-      el.style.color = '#ef4444';
-      el.style.fontWeight = '700';
+      tx.style.color = '#ef4444';
+      tx.style.fontWeight = '700';
     } else {
       tx.textContent = '{txt_awal} ' + fmt(sisa);
     }
@@ -104,6 +106,7 @@ def _timer_html(uid, end_epoch, txt_awal, txt_selesai):
     return (
         tpl.replace("{uid}", uid)
         .replace("{end}", str(end_epoch))
+        .replace("{badge}", badge_html)
         .replace("{txt_awal}", txt_awal)
         .replace("{txt_selesai}", txt_selesai)
     )
@@ -901,25 +904,26 @@ def page_absen():
             else:
                 badge = '<span class="tbl-badge" style="color:#ef4444">Terlewat</span>'
             c1, c2, c3 = st.columns([1.2, 2.9, 1.5])
-            uid_t = f"tm_{j['id_matakuliah']}_{win}_{tgl_hari.isoformat()}"
-            with c1:
-                if win == "belum" and buka_ep:
-                    components.html(
-                        _timer_html(uid_t, buka_ep, "Buka dalam", "Sudah buka"),
-                        height=30,
-                    )
-                elif win in ("aktif", "lewat") and tutup_ep:
-                    components.html(
-                        _timer_html(uid_t, tutup_ep, "Ditutup dalam", "Absensi ditutup"),
-                        height=30,
-                    )
-                st.markdown(f"**{j['jam_mulai'] or '-'}**")
+            c1.markdown(f"**{j['jam_mulai'] or '-'}**")
             c2.markdown(
                 f"**{j['matakuliah']}**<br><small class='absen-sub'>{sub}</small>",
                 unsafe_allow_html=True,
             )
-            with c3:
-                st.markdown(badge, unsafe_allow_html=True)
+            uid_t = f"tm_{j['id_matakuliah']}_{win}_{tgl_hari.isoformat()}"
+            if win == "belum" and buka_ep:
+                with c3:
+                    components.html(
+                        _timer_html(uid_t, buka_ep, badge, "Buka dalam", "Sudah buka"),
+                        height=30,
+                    )
+            elif win in ("aktif", "lewat") and tutup_ep:
+                with c3:
+                    components.html(
+                        _timer_html(uid_t, tutup_ep, badge, "Ditutup dalam", "Absensi ditutup"),
+                        height=30,
+                    )
+            else:
+                c3.markdown(badge, unsafe_allow_html=True)
             if win == "aktif":
                 kb = st.columns(4)
                 for stt, kol in zip(db.STATUS_ABSEN, kb):
