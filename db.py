@@ -606,6 +606,7 @@ def add_absensi(user, id_matakuliah, tanggal, status, catatan):
         "id": _next_id(data["absensi"]),
         "id_matakuliah": id_matakuliah,
         "tanggal": tanggal,
+        "jam": now_wib().strftime("%H:%M"),
         "status": status,
         "catatan": catatan or "",
     }
@@ -620,6 +621,7 @@ def set_absensi(user, id_matakuliah, tanggal, status, catatan=""):
     for a in data["absensi"]:
         if a["id_matakuliah"] == id_matakuliah and a["tanggal"] == tanggal:
             a["status"] = status
+            a["jam"] = now_wib().strftime("%H:%M")
             if catatan:
                 a["catatan"] = catatan
             save_user(user, data)
@@ -628,6 +630,7 @@ def set_absensi(user, id_matakuliah, tanggal, status, catatan=""):
         "id": _next_id(data["absensi"]),
         "id_matakuliah": id_matakuliah,
         "tanggal": tanggal,
+        "jam": now_wib().strftime("%H:%M"),
         "status": status,
         "catatan": catatan or "",
     }
@@ -655,6 +658,7 @@ def absensi_by_tanggal(user, tanggal):
             "id": a["id"],
             "id_matakuliah": a["id_matakuliah"],
             "tanggal": a["tanggal"],
+            "jam": a.get("jam", ""),
             "status": a["status"],
             "catatan": a["catatan"],
         }
@@ -671,6 +675,7 @@ def absensi_list(user, id_matakuliah=None):
             "id": a["id"],
             "matakuliah": mhs.get(a["id_matakuliah"], "-"),
             "tanggal": a["tanggal"],
+            "jam": a.get("jam", ""),
             "status": a["status"],
             "catatan": a["catatan"],
         }

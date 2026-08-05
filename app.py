@@ -1175,6 +1175,7 @@ def page_absen(head=True):
                         "hari": hari,
                         "tanggal": r["tanggal"],
                         "jam": jam,
+                        "pukul_absen": r.get("jam", "") or "-",
                         "status": r["status"],
                         "catatan": r["catatan"],
                     }
@@ -1182,8 +1183,8 @@ def page_absen(head=True):
             df = pd.DataFrame(detil).rename(
                 columns={
                     "matakuliah": "Matakuliah", "kode": "Kode", "hari": "Hari",
-                    "tanggal": "Tanggal", "jam": "Jam", "status": "Status",
-                    "catatan": "Catatan",
+                    "tanggal": "Tanggal", "jam": "Jam", "pukul_absen": "Absen Pukul",
+                    "status": "Status", "catatan": "Catatan",
                 }
             )
             sel, pos = select_table(df, "tbl_absen", height=300)
@@ -1360,11 +1361,11 @@ def page_tugas(tipe_filter, head=True):
         )
         df["Nilai"] = df["Nilai"].fillna("-").apply(lambda v: f"{v:g}" if v != "-" else "-")
 
-        sel, pos = select_table(df, "tbl_tgs", height=320)
-        if sel:
-            tid = rows_tampil[pos]["id"]
-            t = rows_tampil[pos]
-            if _is_admin:
+        if _is_admin:
+            sel, pos = select_table(df, "tbl_tgs", height=320)
+            if sel:
+                tid = rows_tampil[pos]["id"]
+                t = rows_tampil[pos]
                 c1, c2, c3 = st.columns(3)
                 if c1.button("Tandai Diserahkan", type="primary", width="stretch", disabled=t["status"] in ("Diserahkan", "Terlambat")):
                     stt = db.serahkan_tugas(_user, tid)
@@ -1375,23 +1376,34 @@ def page_tugas(tipe_filter, head=True):
                     edit_tugas(t, tid, _user)
                 if c3.button("Hapus", width="stretch"):
                     hapus_dialog(t["judul"], lambda: db.delete_tugas(_user, tid))
-            else:
+        else:
+            st.caption("Klik **Tandai Diserahkan** langsung pada matakuliahnya — tanpa perlu memilih baris dulu.")
+            for t in rows_tampil:
                 sudah = t["status"] in ("Diserahkan", "Terlambat")
-                st.caption("Kamu hanya bisa menyerahkan atau membatalkan — deadline, judul, dan nilai diatur oleh admin.")
-                c1, c2 = st.columns(2)
-                if c1.button("Tandai Belum", width="stretch", disabled=not sudah):
-                    db.batal_tugas(_user, tid)
-                    st.session_state["flash"] = f"'{t['judul']}' ditandai belum diserahkan."
-                    sync.push()
-                    st.rerun()
-                if c2.button("Tandai Diserahkan", type="primary", width="stretch", disabled=sudah):
-                    stt = db.serahkan_tugas(_user, tid)
-                    if stt == "Terlambat":
-                        st.session_state["flash"] = f"⚠️ '{t['judul']}' diserahkan TERLAMBAT (lewat deadline lebih dari 30 menit)."
+                warna = _WARNA_STATUS.get(t["status_tampil"], "#94a3b8")
+                sub = f"<small class='absen-sub'>Deadline: {t['deadline'] or '-'}"
+                if t.get("nilai") is not None:
+                    sub += f" · Nilai: {t['nilai']:g}"
+                sub += "</small>"
+                c1, c2, c3 = st.columns([2.3, 1.2, 1.3])
+                c1.markdown(f"**{t['matakuliah']}** — {t['judul']}<br>{sub}", unsafe_allow_html=True)
+                c2.markdown(f'<span class="tbl-badge" style="color:{warna}">{t["status_tampil"]}</span>', unsafe_allow_html=True)
+                with c3:
+                    if sudah:
+                        if st.button("Tandai Belum", width="stretch", key=f"tgs_batal_{t['id']}"):
+                            db.batal_tugas(_user, t["id"])
+                            st.session_state["flash"] = f"'{t['judul']}' ditandai belum diserahkan."
+                            sync.push()
+                            st.rerun()
                     else:
-                        st.session_state["flash"] = f"'{t['judul']}' ditandai diserahkan."
-                    sync.push()
-                    st.rerun()
+                        if st.button("Tandai Diserahkan", type="primary", width="stretch", key=f"tgs_serah_{t['id']}"):
+                            stt = db.serahkan_tugas(_user, t["id"])
+                            if stt == "Terlambat":
+                                st.session_state["flash"] = f"⚠️ '{t['judul']}' diserahkan TERLAMBAT (lewat deadline lebih dari 30 menit)."
+                            else:
+                                st.session_state["flash"] = f"'{t['judul']}' ditandai diserahkan."
+                            sync.push()
+                            st.rerun()
     else:
         st.info("Belum ada tugas.")
     st.markdown("</div>", unsafe_allow_html=True)
