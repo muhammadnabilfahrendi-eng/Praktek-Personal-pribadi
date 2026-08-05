@@ -28,6 +28,16 @@ def _norm_jam(s):
     return f"{j:02d}:{mnt:02d}"
 
 
+JAM_OPTIONS = [f"{h:02d}:{m:02d}" for h in range(24) for m in range(0, 60, 5)]
+
+
+def _jam_index(s):
+    try:
+        return JAM_OPTIONS.index(s)
+    except ValueError:
+        return 0
+
+
 def _now_wib():
     """Waktu sekarang dalam zona WIB (UTC+7) tanpa info zona."""
     from datetime import timezone
@@ -810,15 +820,15 @@ def page_jadwal():
         dosen = c3.text_input("Dosen", key=f"dosen_mk_{ver}")
         sks = c4.number_input("SKS", min_value=1, max_value=6, value=3, key=f"sks_mk_{ver}")
         t1, t2 = st.columns(2)
-        jam_masuk = t1.time_input("Jam Masuk", value=time(8, 0), step=timedelta(minutes=5), key=f"jm_mulai_{ver}")
-        jam_selesai = t2.time_input("Jam Selesai", value=time(12, 40), step=timedelta(minutes=5), key=f"jm_selesai_{ver}")
+        jam_masuk = t1.selectbox("Jam Masuk", JAM_OPTIONS, index=_jam_index("08:00"), key=f"jm_mulai_{ver}")
+        jam_selesai = t2.selectbox("Jam Selesai", JAM_OPTIONS, index=_jam_index("12:40"), key=f"jm_selesai_{ver}")
         c5, c6 = st.columns(2)
         hari = c5.selectbox("Hari", db.HARI, key=f"hari_mk_{ver}")
         ruang = c6.text_input("Ruang", key=f"ruang_mk_{ver}")
         st.caption("Jam selesai diisi manual sesuai jadwal kampus.")
         if st.button("Simpan", type="primary", width="stretch"):
-            jm = jam_masuk.strftime("%H:%M")
-            js = jam_selesai.strftime("%H:%M")
+            jm = jam_masuk
+            js = jam_selesai
             if not nama.strip():
                 st.error("Nama matakuliah wajib diisi.")
             elif js <= jm:
@@ -1071,8 +1081,8 @@ def edit_tugas(t, tid):
             _dl = None
         c1, c2 = st.columns(2)
         deadline = c1.date_input("Deadline", value=_dl.date() if _dl else date.today())
-        jam_dl = c2.time_input(
-            "Pukul", value=_dl.time() if _dl else time(23, 59), step=timedelta(minutes=5)
+        jam_dl = c2.selectbox(
+            "Pukul", JAM_OPTIONS, index=_jam_index(_dl.strftime("%H:%M") if _dl else "23:55")
         )
         c3, c4 = st.columns(2)
         status = c3.selectbox("Status", db.STATUS_TUGAS, index=db.STATUS_TUGAS.index(t["status"]))
@@ -1085,7 +1095,7 @@ def edit_tugas(t, tid):
         else:
             db.update_tugas(
                 tid, judul=judul.strip(), deskripsi=deskripsi.strip(),
-                deadline=datetime.combine(deadline, jam_dl).strftime("%Y-%m-%d %H:%M"),
+                deadline=datetime.combine(deadline, datetime.strptime(jam_dl, "%H:%M").time()).strftime("%Y-%m-%d %H:%M"),
                 status=status,
                 tanggal_selesai=date.today().isoformat(),
                 nilai=nilai if nilai else None,
@@ -1124,7 +1134,7 @@ def page_tugas(tipe_filter):
                 tipe = "Harian"
             d1, d2 = c2.columns(2)
             deadline = d1.date_input("Deadline", value=date.today(), key=f"tgs_dl_{tgs_ver}")
-            jam_dl = d2.time_input("Pukul", value=time(23, 59), step=timedelta(minutes=5), key=f"tgs_jam_{tgs_ver}")
+            jam_dl = d2.selectbox("Pukul", JAM_OPTIONS, index=_jam_index("23:55"), key=f"tgs_jam_{tgs_ver}")
             judul = st.text_input("Judul", key=f"tgs_judul_{tgs_ver}")
             deskripsi = st.text_area("Deskripsi (opsional)", key=f"tgs_desk_{tgs_ver}")
             c3, c4 = st.columns(2)
@@ -1138,7 +1148,7 @@ def page_tugas(tipe_filter):
                 mid = mk_list[mk.index(mk)]["id"]
                 db.add_tugas(
                     mid, tipe, judul.strip(), deskripsi.strip(),
-                    datetime.combine(deadline, jam_dl).strftime("%Y-%m-%d %H:%M"),
+                    datetime.combine(deadline, datetime.strptime(jam_dl, "%H:%M").time()).strftime("%Y-%m-%d %H:%M"),
                     status,
                     nilai if nilai else None,
                 )
