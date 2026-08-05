@@ -939,14 +939,12 @@ def page_jadwal(head=True):
                 "ruang": "Ruang", "dosen": "Dosen",
             }
         )
-        sel, pos = select_table(df, "tbl_jdwl", height=300)
-        if sel:
-            jid = jdwl[pos]["id"]
-            if _is_admin:
+        if _is_admin:
+            sel, pos = select_table(df, "tbl_jdwl", height=300)
+            if sel:
+                jid = jdwl[pos]["id"]
                 if st.button("Hapus Jadwal", width="stretch", key="jdwl_hapus"):
                     hapus_dialog(f"jadwal {sel['Matakuliah']} {sel['Hari']} {sel['Mulai']}", lambda: db.delete_jadwal(_user, jid))
-            else:
-                st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
         st.info("Belum ada jadwal.")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -961,15 +959,13 @@ def page_jadwal(head=True):
         dfm = dfm[["nama", "kode", "dosen", "sks", "jam"]].rename(
             columns={"nama": "Matakuliah", "kode": "Kode", "dosen": "Dosen", "sks": "SKS", "jam": "Jam Masuk"}
         )
-        selm, posm = select_table(dfm, "tbl_mk", height=260)
-        if selm:
-            mid_sel = mk_list[posm]["id"]
-            st.caption("Menghapus matakuliah ikut menghapus jadwal, absen, dan tugasnya.")
-            if _is_admin:
+        if _is_admin:
+            selm, posm = select_table(dfm, "tbl_mk", height=260)
+            if selm:
+                mid_sel = mk_list[posm]["id"]
+                st.caption("Menghapus matakuliah ikut menghapus jadwal, absen, dan tugasnya.")
                 if st.button("Hapus Matakuliah", width="stretch", key="mk_hapus"):
                     hapus_dialog(selm["Matakuliah"], lambda: db.delete_matakuliah(_user, mid_sel))
-            else:
-                st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
     else:
         st.info("Belum ada matakuliah.")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1390,7 +1386,7 @@ def page_tugas(tipe_filter, head=True):
                 c2.markdown(f'<span class="tbl-badge" style="color:{warna}">{t["status_tampil"]}</span>', unsafe_allow_html=True)
                 with c3:
                     if t.get("dikunci"):
-                        st.caption(f'<span class="tbl-badge" style="color:#f87171">Tidak bisa ditandai</span> — lewat tenggat', unsafe_allow_html=True)
+                        st.caption('<span class="tbl-badge" style="color:#f87171">Deadline selesai</span>', unsafe_allow_html=True)
                     elif sudah:
                         if st.button("Tandai Belum", width="stretch", key=f"tgs_batal_{t['id']}"):
                             db.batal_tugas(_user, t["id"])
