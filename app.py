@@ -1147,23 +1147,55 @@ def page_absen(head=True):
         ]
     )
 
-    rows = db.absensi_list(_user, id_matakuliah=m["id"])
-    st.markdown(f'<div class="panel"><div class="panel-title">Riwayat Absen ({len(rows)})</div>', unsafe_allow_html=True)
-    if rows:
-        df = pd.DataFrame(rows)[["tanggal", "status", "catatan"]].rename(
-            columns={"tanggal": "Tanggal", "status": "Status", "catatan": "Catatan"}
+    with st.expander("Lihat Riwayat Absensi", expanded=False):
+        st.caption(
+            f"Riwayat absensi **{m['nama']}** — tampil hanya saat kamu membuka bagian ini."
         )
-        sel, pos = select_table(df, "tbl_absen", height=300)
-        if sel:
-            aid = rows[pos]["id"]
-            if _is_admin:
-                if st.button("Hapus Absen", width="stretch", key="absen_hapus"):
-                    hapus_dialog(f"absen {sel['Tanggal']} ({sel['Status']})", lambda: db.delete_absensi(_user, aid))
-            else:
-                st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
-    else:
-        st.info("Belum ada catatan absen untuk matakuliah ini.")
-    st.markdown("</div>", unsafe_allow_html=True)
+        rows = db.absensi_list(_user, id_matakuliah=m["id"])
+        if rows:
+            jam_per_hari = {
+                j["hari"]: f"{j['jam_mulai']}–{j['jam_selesai']}"
+                for j in db.jadwal_list(_user)
+                if j["id_matakuliah"] == m["id"]
+            }
+            jm = m.get("jam_masuk", "")
+            js = m.get("jam_selesai", "")
+            detil = []
+            for r in rows:
+                try:
+                    tgl = date.fromisoformat(r["tanggal"])
+                    hari = db.HARI[tgl.weekday()]
+                except (ValueError, TypeError):
+                    hari = "-"
+                jam = jam_per_hari.get(hari) or (f"{jm}–{js}" if jm else "-")
+                detil.append(
+                    {
+                        "matakuliah": m["nama"],
+                        "kode": m.get("kode", ""),
+                        "hari": hari,
+                        "tanggal": r["tanggal"],
+                        "jam": jam,
+                        "status": r["status"],
+                        "catatan": r["catatan"],
+                    }
+                )
+            df = pd.DataFrame(detil).rename(
+                columns={
+                    "matakuliah": "Matakuliah", "kode": "Kode", "hari": "Hari",
+                    "tanggal": "Tanggal", "jam": "Jam", "status": "Status",
+                    "catatan": "Catatan",
+                }
+            )
+            sel, pos = select_table(df, "tbl_absen", height=300)
+            if sel:
+                aid = rows[pos]["id"]
+                if _is_admin:
+                    if st.button("Hapus Absen", width="stretch", key="absen_hapus"):
+                        hapus_dialog(f"absen {sel['Tanggal']} ({sel['Status']})", lambda: db.delete_absensi(_user, aid))
+                else:
+                    st.caption("🔒 Hapus data hanya bisa dilakukan oleh Admin.")
+        else:
+            st.info(f"Belum ada catatan absen untuk {m['nama']}.")
 
     st.markdown('<div class="panel"><div class="panel-title">Rekap Semua Matakuliah</div>', unsafe_allow_html=True)
     all_mk = db.matakuliah_list(_user)
