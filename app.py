@@ -111,6 +111,32 @@ def _timer_html(uid, end_epoch, badge_html, txt_awal, txt_selesai):
         .replace("{txt_selesai}", txt_selesai)
     )
 
+
+def _clock_html():
+    """Jam real-time WIB (hari, tanggal, jam) — berdetak tiap detik."""
+    tpl = """<div class="clock-box">
+<div id="clk_tgl_UID" class="clock-tgl">-</div>
+<div id="clk_jam_UID" class="clock-jam">--:--:--</div>
+<div class="clock-wib">WIB (UTC+7)</div>
+</div>
+<script>
+(function() {
+  var HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  var BLN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  function p(n) { return (n < 10 ? '0' : '') + n; }
+  function tick() {
+    var d = new Date(Date.now() + 7 * 3600 * 1000);
+    var tgl = HARI[d.getUTCDay()] + ', ' + d.getUTCDate() + ' ' + BLN[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+    var jam = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds());
+    document.getElementById('clk_tgl_UID').textContent = tgl;
+    document.getElementById('clk_jam_UID').textContent = jam;
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>"""
+    return tpl.replace("UID", "dsb")
+
 st.set_page_config(page_title="Catatan Semester 5", layout="wide", initial_sidebar_state="expanded")
 
 CSS = """
@@ -480,6 +506,30 @@ html, body, [class*="css"], [data-testid="stAppViewContainer"] {
     color: #64748b;
     font-size: .78rem;
 }
+.clock-box {
+    padding: 12px 18px;
+    border-radius: 14px;
+    border: 1px solid rgba(96,165,250,.35);
+    background: linear-gradient(120deg, rgba(59,130,246,.16), rgba(6,182,212,.12));
+    text-align: center;
+    margin: 4px 0 16px 0;
+}
+.clock-tgl {
+    font-size: .95rem;
+    font-weight: 700;
+    color: #e2e8f0;
+}
+.clock-jam {
+    font-size: 1.9rem;
+    font-weight: 800;
+    color: #f8fafc;
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+}
+.clock-wib {
+    font-size: .72rem;
+    color: #7f8ea3;
+}
 
 [data-testid="stButton"] button[kind="primary"], [data-testid="stFormSubmitButton"] button[kind="primary"] {
     background: linear-gradient(120deg, #3b82f6, #06b6d4);
@@ -675,6 +725,7 @@ def page_dashboard():
     )
     page_header(*PAGE_TITLES["Dashboard"])
     flash()
+    components.html(_clock_html(), height=110)
     r = db.rekap_keseluruhan()
     pct = round(r["jml_hadir"] / r["jml_pertemuan"] * 100) if r["jml_pertemuan"] else 0
     stat_cards(
