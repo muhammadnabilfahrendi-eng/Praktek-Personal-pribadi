@@ -919,7 +919,7 @@ def page_absen():
             elif win in ("aktif", "lewat") and tutup_ep:
                 with c3:
                     components.html(
-                        _timer_html(uid_t, tutup_ep, badge, "Ditutup dalam", "Absensi ditutup"),
+                        _timer_html(uid_t, tutup_ep, badge, "Locked dalam", "Absensi ditutup"),
                         height=30,
                     )
             else:
