@@ -1685,6 +1685,27 @@ def page_login():
 
 # ---------- Utama ----------
 
+# Pengecekan integritas: app.py butuh fungsi-fungsi tertentu di db.py.
+# Kalau server menjalankan db.py yang kuno/tidak lengkap (build basi di Cloud),
+# tampilkan pesan jelas daripada AttributeError misterius.
+_DB_FUNCS = [
+    "absen_sesi_aktif", "akun_list", "add_absensi", "add_jadwal",
+    "add_matakuliah", "add_tugas", "add_tugas_batch", "buka_absen",
+    "check_login", "delete_akun", "delete_jadwal", "delete_matakuliah",
+    "delete_tugas", "get_pertanyaan", "is_admin", "jadwal_list",
+    "matakuliah_list", "notif_belum_dibaca", "reset_password",
+    "tambah_notifikasi", "tandai_notifikasi_dibaca", "tugas_list",
+]
+_MISSING_DB = [n for n in _DB_FUNCS if not hasattr(db, n)]
+if _MISSING_DB:
+    st.error(
+        "⚠️ **Server menjalankan db.py versi lama** — fungsi yang hilang: "
+        + ", ".join(_MISSING_DB)
+        + ". Buka share.streamlit.io → Manage app → Rebuild (atau hapus & deploy "
+        "ulang dari repo) agar versi file lengkap ikut terpasang."
+    )
+    st.stop()
+
 # Sinkronisasi cloud dilakukan SEKALI per proses aplikasi, bukan per sesi.
 # Di Streamlit Cloud setiap reload membuka sesi baru; kalau pull() jalan tiap
 # sesi, halaman bisa macet lama menunggu GitHub. Pakai penanda proses + timeout
