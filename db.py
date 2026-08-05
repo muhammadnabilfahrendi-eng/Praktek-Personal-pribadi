@@ -548,60 +548,87 @@ def notif_belum_dibaca(user):
 
 # ---------- Sesi absen (dibuka admin) ----------
 
+def _sesi_list(data):
+    """Sesi absen bisa berjumlah banyak; data lama berbentuk dict tunggal."""
+    s = data.get("absen_sesi") or []
+    if isinstance(s, dict):
+        s = [s]
+    return s
+
+
 def buka_absen(user, id_matakuliah, batas=""):
-    """Admin membuka sesi absen untuk satu matakuliah user. batas: 'YYYY-MM-DD HH:MM'."""
+    """Admin membuka sesi absen untuk satu matakuliah. Gagal (False) jika
+    matakuliah yang sama sudah dibuka pada hari yang sama."""
     data = data_user(user)
-    data["absen_sesi"] = {
-        "id_matakuliah": id_matakuliah,
-        "batas": batas,
-        "dibuka": datetime.now().strftime("%Y-%m-%d %H:%M"),
-    }
+    tgl = now_wib().date().isoformat()
+    sesi = _sesi_list(data)
+    for s in sesi:
+        if s["id_matakuliah"] == id_matakuliah and s.get("dibuka", "")[:10] == tgl:
+            return False
+    sesi.append(
+        {
+            "id": _next_id(sesi),
+            "id_matakuliah": id_matakuliah,
+            "batas": batas,
+            "dibuka": now_wib().strftime("%Y-%m-%d %H:%M"),
+        }
+    )
+    data["absen_sesi"] = sesi
     save_user(user, data)
+    return True
 
 
-def tutup_absen(user):
+def tutup_absen(user, id_sesi=None):
+    """Menutup satu sesi (atau semua jika id_sesi None)."""
     data = data_user(user)
-    data["absen_sesi"] = None
+    sesi = _sesi_list(data)
+    if id_sesi is None:
+        data["absen_sesi"] = []
+    else:
+        data["absen_sesi"] = [s for s in sesi if s.get("id") != id_sesi]
     save_user(user, data)
 
 
 def absen_sesi_info(user, now_str):
-    """Info sesi absen yang dibuka admin, tanpa cek 'sudah absen hari ini'.
-    None jika tidak ada sesi, lewat batas, atau matakuliahnya sudah dihapus."""
+    """Semua sesi yang masih berlaku (belum lewat batas, matakuliah masih ada).
+    now_str: 'YYYY-MM-DD HH:MM'."""
     data = data_user(user)
-    s = data.get("absen_sesi")
-    if not s:
-        return None
-    m = next((x for x in data["matakuliah"] if x["id"] == s.get("id_matakuliah")), None)
-    if not m:
-        return None
-    if s.get("batas"):
-        try:
-            batas = datetime.strptime(s["batas"], "%Y-%m-%d %H:%M")
-            now = datetime.strptime(now_str, "%Y-%m-%d %H:%M")
-            if now > batas:
-                return None
-        except ValueError:
-            pass
-    return {
-        "id_matakuliah": s.get("id_matakuliah"),
-        "matakuliah": m["nama"],
-        "kode": m.get("kode", ""),
-        "batas": s.get("batas", ""),
-    }
+    mhs = {m["id"]: m for m in data["matakuliah"]}
+    hasil = []
+    for s in _sesi_list(data):
+        m = mhs.get(s.get("id_matakuliah"))
+        if not m:
+            continue
+        if s.get("batas"):
+            try:
+                batas = datetime.strptime(s["batas"], "%Y-%m-%d %H:%M")
+                now = datetime.strptime(now_str, "%Y-%m-%d %H:%M")
+                if now > batas:
+                    continue
+            except ValueError:
+                pass
+        hasil.append(
+            {
+                "id": s.get("id", 0),
+                "id_matakuliah": s.get("id_matakuliah"),
+                "matakuliah": m["nama"],
+                "kode": m.get("kode", ""),
+                "batas": s.get("batas", ""),
+                "dibuka": s.get("dibuka", ""),
+            }
+        )
+    return hasil
 
 
 def absen_sesi_aktif(user, now_str):
-    """Sesi absen yang masih berlaku dan belum diabsen hari ini, atau None.
-    now_str: 'YYYY-MM-DD HH:MM'."""
-    info = absen_sesi_info(user, now_str)
-    if not info:
-        return None
+    """Sesi yang masih berlaku dan belum diabsen hari ini."""
     tgl = now_str[:10]
-    for a in data_user(user)["absensi"]:
-        if a["id_matakuliah"] == info["id_matakuliah"] and a["tanggal"] == tgl:
-            return None
-    return info
+    sudah = {
+        a["id_matakuliah"]
+        for a in data_user(user)["absensi"]
+        if a["tanggal"] == tgl
+    }
+    return [s for s in absen_sesi_info(user, now_str) if s["id_matakuliah"] not in sudah]
 
 
 # ---------- Absensi ----------

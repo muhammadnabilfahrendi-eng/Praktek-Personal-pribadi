@@ -722,14 +722,13 @@ def page_dashboard():
     page_header(*PAGE_TITLES["Dashboard"])
     flash()
 
-    sesi = db.absen_sesi_aktif(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
-    if sesi:
+    for sesi in db.absen_sesi_aktif(_user, _now_wib().strftime("%Y-%m-%d %H:%M")):
         info_batas = f" (batas {sesi['batas']})" if sesi["batas"] else ""
         st.warning(
             f"📢 Absensi **{sesi['matakuliah']}** dibuka oleh admin{info_batas} — "
             "jangan sampai terlewat, absen sekarang!"
         )
-        if st.button("Absen Sekarang", type="primary", width="stretch"):
+        if st.button("Absen Sekarang", type="primary", width="stretch", key=f"absen_sekarang_{sesi['id']}"):
             db.set_absensi(_user, sesi["id_matakuliah"], _now_wib().date().isoformat(), "Hadir")
             st.session_state["flash"] = f"Absen {sesi['matakuliah']} → Hadir ✔"
             sync.push()
@@ -1060,79 +1059,96 @@ def page_absen(head=True):
                     f'<div class="absen-lock">Locked · {ket}</div>',
                     unsafe_allow_html=True,
                 )
-    # Sesi absen yang dibuka admin: tampil di Absen Cepat dan bisa diabsen
-    # langsung, walau di luar jam jadwal normal (selama sesi masih aktif).
-    sesi = db.absen_sesi_aktif(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
-    if sesi:
-        info_sesi = f" — batas {sesi['batas']}" if sesi["batas"] else ""
-        st.markdown(
-            f'<div class="absen-rule" style="color:#10b981">📢 Sesi absen dibuka admin'
-            f'{html.escape(info_sesi)} — absen sekarang!</div>',
-            unsafe_allow_html=True,
-        )
-        c1, c2, c3 = st.columns([1.2, 2.9, 1.5])
-        c1.markdown("**Sesi admin**")
-        c2.markdown(
-            f"**{html.escape(sesi['matakuliah'])}**<br><small class='absen-sub'>dibuka admin{html.escape(info_sesi)}</small>",
-            unsafe_allow_html=True,
-        )
-        c3.markdown(
-            '<span class="tbl-badge" style="color:#10b981">Bisa absen</span>',
-            unsafe_allow_html=True,
-        )
-        kb = st.columns(4)
-        for stt, kol in zip(db.STATUS_ABSEN, kb):
-            if kol.button(
-                stt, width="stretch",
-                key=f"sk_{sesi['id_matakuliah']}_{stt}_{tgl_hari.isoformat()}",
-            ):
-                db.set_absensi(_user, sesi["id_matakuliah"], tgl_hari.isoformat(), stt)
-                st.session_state["flash"] = f"{sesi['matakuliah']} · Sesi admin → {stt} ✔"
-                sync.push()
-                st.rerun()
-    else:
-        sesi_terbuka = db.absen_sesi_info(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
-        if sesi_terbuka:
+    # Sesi absen yang dibuka admin: bisa lebih dari satu, tampil di Absen Cepat
+    # dan bisa diabsen langsung walau di luar jam jadwal normal (selama sesi aktif).
+    _sekarang = _now_wib().strftime("%Y-%m-%d %H:%M")
+    _aktif_ids = {s["id"] for s in db.absen_sesi_aktif(_user, _sekarang)}
+    for sesi in db.absen_sesi_info(_user, _sekarang):
+        if sesi["id"] in _aktif_ids:
+            info_sesi = f" — batas {sesi['batas']}" if sesi["batas"] else ""
+            st.markdown(
+                f'<div class="absen-rule" style="color:#10b981">📢 Sesi absen dibuka admin'
+                f'{html.escape(info_sesi)} — absen sekarang!</div>',
+                unsafe_allow_html=True,
+            )
+            c1, c2, c3 = st.columns([1.2, 2.9, 1.5])
+            c1.markdown("**Sesi admin**")
+            c2.markdown(
+                f"**{html.escape(sesi['matakuliah'])}**<br><small class='absen-sub'>dibuka admin{html.escape(info_sesi)}</small>",
+                unsafe_allow_html=True,
+            )
+            c3.markdown(
+                '<span class="tbl-badge" style="color:#10b981">Bisa absen</span>',
+                unsafe_allow_html=True,
+            )
+            kb = st.columns(4)
+            for stt, kol in zip(db.STATUS_ABSEN, kb):
+                if kol.button(
+                    stt, width="stretch",
+                    key=f"sk_{sesi['id']}_{stt}_{tgl_hari.isoformat()}",
+                ):
+                    db.set_absensi(_user, sesi["id_matakuliah"], tgl_hari.isoformat(), stt)
+                    st.session_state["flash"] = f"{sesi['matakuliah']} · Sesi admin → {stt} ✔"
+                    sync.push()
+                    st.rerun()
+        else:
             st.caption(
-                f"📢 Sesi absen **{sesi_terbuka['matakuliah']}** dibuka admin, tapi kamu sudah absen hari ini — sesi tidak tampil karena sudah terisi."
+                f"📢 Sesi absen **{sesi['matakuliah']}** dibuka admin, tapi kamu sudah absen hari ini — sesi tidak tampil karena sudah terisi."
             )
     st.markdown("</div>", unsafe_allow_html=True)
 
     if _is_admin:
         st.markdown('<div class="panel"><div class="panel-title">Buka Absensi (Admin)</div>', unsafe_allow_html=True)
-        sesi = db.absen_sesi_info(_user, _now_wib().strftime("%Y-%m-%d %H:%M"))
-        if sesi:
-            sudah = db.absen_sesi_aktif(_user, _now_wib().strftime("%Y-%m-%d %H:%M")) is None
-            ket = " — user sudah absen hari ini, sesi tidak tampil di Absen Cepat." if sudah else ""
-            st.caption(f"Sesi aktif: **{sesi['matakuliah']}**{' (batas ' + sesi['batas'] + ')' if sesi['batas'] else ''}{ket}")
-            if st.button("Tutup Absensi", width="stretch", key="absen_tutup"):
-                db.tutup_absen(_user)
-                st.session_state["flash"] = f"Sesi absensi '{sesi['matakuliah']}' ditutup."
-                sync.push()
-                st.rerun()
+        sesi_list = db.absen_sesi_info(_user, _sekarang)
+        if sesi_list:
+            for sesi in sesi_list:
+                ket = ""
+                if sesi["id"] not in _aktif_ids:
+                    ket = " — user sudah absen hari ini, sesi tidak tampil di Absen Cepat."
+                st.caption(f"Sesi aktif: **{sesi['matakuliah']}**{' (batas ' + sesi['batas'] + ')' if sesi['batas'] else ''}{ket}")
+                if st.button("Tutup Absensi", width="stretch", key=f"absen_tutup_{sesi['id']}"):
+                    db.tutup_absen(_user, sesi["id"])
+                    st.session_state["flash"] = f"Sesi absensi '{sesi['matakuliah']}' ditutup."
+                    sync.push()
+                    st.rerun()
         else:
             labels2 = [f"{m['nama']} ({m['kode']})" if m["kode"] else m["nama"] for m in mk_list]
-            lbl2 = st.selectbox("Matakuliah yang dibuka", labels2, key="adm_buka_mk")
-            m2 = mk_list[labels2.index(lbl2)]
+            pilih_mk = st.multiselect(
+                "Matakuliah yang dibuka (bisa lebih dari satu)", labels2, key="adm_buka_mk",
+            )
             c1, c2 = st.columns(2)
             with c1:
                 batas_tgl = st.date_input("Batas absen (tanggal)", value=date.today())
             with c2:
                 batas_jam = _time_picker_ui("Batas absen (jam)", "23:55", "adm_buka_jam")
             if st.button("Buka Absensi", type="primary", width="stretch", key="absen_buka"):
-                if not batas_jam:
+                if not pilih_mk:
+                    st.error("Pilih minimal satu matakuliah.")
+                elif not batas_jam:
                     st.error("Jam batas absen wajib diisi.")
                 else:
                     batas = datetime.combine(
                         batas_tgl, datetime.strptime(batas_jam, "%H:%M").time()
                     ).strftime("%Y-%m-%d %H:%M")
-                    db.buka_absen(_user, m2["id"], batas)
-                    db.tambah_notifikasi(
-                        _user,
-                        f"Absensi '{m2['nama']}' dibuka oleh admin — segera absen sebelum {batas}.",
-                        "absen",
-                    )
-                    st.session_state["flash"] = f"Absensi '{m2['nama']}' dibuka untuk akun {_user}."
+                    dibuka = []
+                    dilewati = []
+                    for label_mk in pilih_mk:
+                        m2 = mk_list[labels2.index(label_mk)]
+                        if db.buka_absen(_user, m2["id"], batas):
+                            dibuka.append(m2["nama"])
+                        else:
+                            dilewati.append(m2["nama"])
+                    pesan = []
+                    if dibuka:
+                        db.tambah_notifikasi(
+                            _user,
+                            f"Absensi dibuka oleh admin: {', '.join(dibuka)} — segera absen sebelum {batas}.",
+                            "absen",
+                        )
+                        pesan.append(f"Absensi dibuka: {', '.join(dibuka)}.")
+                    if dilewati:
+                        pesan.append(f"Lewati (sudah dibuka hari ini): {', '.join(dilewati)}.")
+                    st.session_state["flash"] = " ".join(pesan)
                     sync.push()
                     st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -1750,7 +1766,7 @@ def page_login():
 # Kalau server menjalankan db.py yang kuno/tidak lengkap (build basi di Cloud),
 # tampilkan pesan jelas daripada AttributeError misterius.
 _DB_FUNCS = [
-    "absen_sesi_aktif", "akun_list", "add_absensi", "add_jadwal",
+    "absen_sesi_aktif", "absen_sesi_info", "akun_list", "add_absensi", "add_jadwal",
     "add_matakuliah", "add_tugas", "add_tugas_batch", "buka_absen",
     "check_login", "delete_akun", "delete_jadwal", "delete_matakuliah",
     "delete_tugas", "get_pertanyaan", "is_admin", "jadwal_list",
