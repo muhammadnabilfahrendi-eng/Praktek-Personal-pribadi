@@ -115,7 +115,7 @@ def _timer_html(uid, end_epoch, badge_html, txt_awal, txt_selesai):
 def _clock_html():
     """Jam real-time WIB: jam besar + label WIB kecil sejajar, tanggal di bawah."""
     tpl = """<div style="text-align:center;max-width:420px;margin:0 auto;padding:14px 18px;border-radius:14px;border:1px solid rgba(96,165,250,.35);background:linear-gradient(120deg,rgba(59,130,246,.16),rgba(6,182,212,.12));font-family:'Segoe UI',sans-serif">
-<div id="clk_jam_UID" style="font-size:2.1rem;font-weight:800;color:#f8fafc;letter-spacing:1px;font-variant-numeric:tabular-nums">--:--</div>
+<div id="clk_jam_UID" style="font-size:2.1rem;font-weight:800;color:#f8fafc;letter-spacing:1px;font-variant-numeric:tabular-nums">--:--:--</div>
 <div style="font-size:.8rem;color:#7f8ea3;margin-top:2px">WIB (UTC+7)</div>
 </div>
 <div id="clk_tgl_UID" style="text-align:center;margin-top:6px;font-size:.95rem;font-weight:700;color:#e2e8f0;font-family:'Segoe UI',sans-serif">-</div>
@@ -126,7 +126,7 @@ def _clock_html():
   function p(n) { return (n < 10 ? '0' : '') + n; }
   function tick() {
     var d = new Date(Date.now() + 7 * 3600 * 1000);
-    var jam = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+    var jam = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds());
     var tgl = HARI[d.getUTCDay()] + ', ' + d.getUTCDate() + ' ' + BLN[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
     document.getElementById('clk_jam_UID').textContent = jam;
     document.getElementById('clk_tgl_UID').textContent = tgl;
